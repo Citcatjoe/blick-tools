@@ -1,0 +1,37 @@
+{
+  "name": "blick-widgets-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:poll": "npm run dev -w apps/poll",
+    "build:poll": "npm run build -w apps/poll",
+    "dev:calendar": "npm run dev -w apps/calendar",
+    "build:calendar": "npm run build -w apps/calendar",
+    "dev:folder": "npm run dev -w apps/folder",
+    "build:folder": "npm run build -w apps/folder",
+    "dev:teaser": "npm run dev -w apps/teaser",
+    "build:teaser": "npm run build -w apps/teaser",
+    "dev:docs": "npm run dev -w apps/docs",
+    "build:docs": "npm run build -w apps/docs",
+    "dev:utils": "npm run dev -w apps/utils",
+    "build:utils": "npm run build -w apps/utils",
+    "dev:facts": "npm run dev -w apps/facts",
+    "build:facts": "npm run build -w apps/facts",
+    "dev:potm": "npm run dev -w apps/potm",
+    "build:potm": "npm run build -w apps/potm",
+    "dev:prono": "npm run dev -w apps/prono",
+    "build:prono": "npm run build -w apps/prono",
+    "dev:quiz": "npm run dev -w apps/quiz",
+    "build:quiz": "npm run build -w apps/quiz",
+    "dev:temoin": "npm run dev -w apps/temoin",
+    "build:temoin": "npm run build -w apps/temoin",
+    "dev:tinder": "npm run dev -w apps/tinder",
+    "build:tinder": "npm run build -w apps/tinder",
+    "dev:backend": "npm run dev -w apps/backend",
+    "build:backend": "npm run build -w apps/backend"
+  }
+}

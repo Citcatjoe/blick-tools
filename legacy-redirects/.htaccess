@@ -1,0 +1,14 @@
+RewriteEngine On
+
+RewriteRule ^bl-tools-client-calendar/(.*)$ /__is_embed_somewhere/blick-tools/calendar/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-docs/(.*)$ /__is_embed_somewhere/blick-tools/docs/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-facts/(.*)$ /__is_embed_somewhere/blick-tools/facts/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-folder/(.*)$ /__is_embed_somewhere/blick-tools/folder/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-poll/(.*)$ /__is_embed_somewhere/blick-tools/poll/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-potm/(.*)$ /__is_embed_somewhere/blick-tools/potm/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-prono/(.*)$ /__is_embed_somewhere/blick-tools/prono/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-quiz/(.*)$ /__is_embed_somewhere/blick-tools/quiz/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-teaser/(.*)$ /__is_embed_somewhere/blick-tools/teaser/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-temoin/(.*)$ /__is_embed_somewhere/blick-tools/temoin/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-tinder/(.*)$ /__is_embed_somewhere/blick-tools/tinder/$1 [R=301,L,QSA]
+RewriteRule ^bl-tools-client-utils/(.*)$ /__is_embed_somewhere/blick-tools/utils/$1 [R=301,L,QSA]
