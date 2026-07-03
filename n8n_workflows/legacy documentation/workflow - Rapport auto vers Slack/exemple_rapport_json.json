@@ -1,0 +1,179 @@
+{
+  "reportId": "2026-04",
+  "meta": {
+    "title": "Rapport Blick Tools",
+    "reportMonth": "avril 2026",
+    "targetMonth": "mai 2026",
+    "generatedAt": "2026-05-18T16:56:00Z"
+  },
+  "globalStats": {
+    "widgetsCreated": {
+      "count": 11,
+      "changeVsPreviousMonth": 1000.0,
+      "details": {
+        "sondage": 2,
+        "faits_marquants": 1,
+        "joueur_du_match": 1,
+        "teaser": 1,
+        "tinder": 1,
+        "quiz": 1,
+        "dossier": 1,
+        "appel_a_temoignage": 1,
+        "pronostic": 1,
+        "calendrier": 1
+      }
+    },
+    "totalInteractions": {
+      "count": 3405,
+      "changeVsPreviousMonth": 3769.3
+    },
+    "efficiencyIndex": {
+      "value": 310,
+      "changeVsPreviousMonth": 251.8,
+      "description": "Moyenne d'interactions par widget"
+    }
+  },
+  "rubricsDistribution": [
+    {
+      "name": "Sport",
+      "widgetCount": 4,
+      "changeVsPreviousMonth": 33.3
+    },
+    {
+      "name": "News Suisse",
+      "widgetCount": 4,
+      "changeVsPreviousMonth": -20.0
+    },
+    {
+      "name": "News Internationale",
+      "widgetCount": 3,
+      "changeVsPreviousMonth": null
+    }
+  ],
+  "performanceRanking": {
+    "tops": [
+      {
+        "rank": 1,
+        "title": "Faits marquants de Davos - Fribourg",
+        "type": "Faits marquants",
+        "interactions": 1488,
+        "activeDays": 4
+      },
+      {
+        "rank": 2,
+        "title": "Expérience Eatrenalin Europa-Park",
+        "type": "Sondage",
+        "interactions": 678,
+        "activeDays": 12
+      },
+      {
+        "rank": 3,
+        "title": "Joueur du match de Davos - Fribourg",
+        "type": "Joueur du match",
+        "interactions": 334,
+        "activeDays": 2
+      }
+    ],
+    "flops": [
+      {
+        "rank": 1,
+        "title": "Appel à témoignage : soirées piégées",
+        "type": "Appel à témoignage",
+        "interactions": 33,
+        "activeDays": 18
+      },
+      {
+        "rank": 2,
+        "title": "Pronostic France - Arabie Saoudite",
+        "type": "Pronostic",
+        "interactions": 25,
+        "activeDays": 3
+      },
+      {
+        "rank": 3,
+        "title": "Matchs Nati Poules Mondial 2026",
+        "type": "Calendrier",
+        "interactions": 12,
+        "activeDays": 24
+      }
+    ]
+  },
+  "aiAnalysis": {
+    "author": "Blick Tools MegaMind",
+    "paragraphs": [
+      "L'activité d'avril 2026 a été marquée par une performance exceptionnelle et un engagement record (+3769.3% vs mars 2026). Cette croissance spectaculaire est largement portée par le widget « Faits marquants de Davos - Fribourg », qui a dominé l'espace avec un taux d'engagement très élevé. Ce succès confirme la forte résonance du contenu immersif et narratif.",
+      "En revanche, une analyse des widgets de bas de liste révèle des échecs relatifs. Des formats interactifs comme le 'tinder' ou le 'quiz', bien que pertinents par nature, n'ont pas réussi à capter l'attention autant que le contenu événementiel structuré. Pour maximiser l'engagement futur, il est crucial d'intégrer ces widgets au sein de modules plus larges comme un 'Dossier'."
+    ]
+  },
+  "editorialIdeas": {
+    "targetMonth": "mai 2026",
+    "brand": "Blick",
+    "topics": [
+      {
+        "name": "Champion du Monde de hockey",
+        "suggestions": [
+          {
+            "widgetType": "Joueur du match",
+            "idea": "Qui a été le meilleur joueur de la rencontre ?"
+          },
+          {
+            "widgetType": "Quiz",
+            "idea": "Testez vos connaissances sur l'histoire du hockey."
+          }
+        ]
+      },
+      {
+        "name": "Tour de Romandie",
+        "suggestions": [
+          {
+            "widgetType": "Pronostic",
+            "idea": "Quel coureur remportera le classement général ?"
+          },
+          {
+            "widgetType": "Faits marquants",
+            "idea": "Les moments forts des étapes clés du Tour."
+          }
+        ]
+      },
+      {
+        "name": "Eurovision 2026 - Vienne",
+        "suggestions": [
+          {
+            "widgetType": "Sondage",
+            "idea": "Quel pays va remporter l'Eurovision 2026 ?"
+          },
+          {
+            "widgetType": "Dossier",
+            "idea": "Tout savoir sur le 70e anniversaire et les artistes."
+          }
+        ]
+      },
+      {
+        "name": "Roland Garros",
+        "suggestions": [
+          {
+            "widgetType": "Joueur du match",
+            "idea": "Votez pour le meilleur joueur de la semaine."
+          },
+          {
+            "widgetType": "Quiz",
+            "idea": "Testez vos connaissances sur les records du tennis."
+          }
+        ]
+      },
+      {
+        "name": "Fête des mères",
+        "suggestions": [
+          {
+            "widgetType": "Appel à témoignages",
+            "idea": "Partagez votre plus beau souvenir."
+          },
+          {
+            "widgetType": "Dossier",
+            "idea": "Idées cadeaux et célébrations."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4,6 +4,7 @@ import { doc, setDoc, addDoc, getDocs, collection, Timestamp } from 'firebase/fi
 
 function App() {
   const [collectionName, setCollectionName] = useState('embeds');
+  const [targetCollection, setTargetCollection] = useState('widgets');
   const [activeTab, setActiveTab] = useState('transfert'); // 'transfert' or 'refactor'
   
   // Editor State
@@ -31,6 +32,13 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
   const [alert, setAlert] = useState(null);
+
+  // Migration state
+  const [migrationStatus, setMigrationStatus] = useState('idle'); // idle, running, done, error
+  const [migrationLogs, setMigrationLogs] = useState([]);
+  const [migrationProgress, setMigrationProgress] = useState({ current: 0, total: 0 });
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [migrationEnv, setMigrationEnv] = useState('test'); // 'test' or 'prod'
 
   const testProjectId = firebaseConfig.projectId || 'Test DB';
   const prodProjectId = prodConfig?.projectId || 'Prod DB';
@@ -471,6 +479,410 @@ function App() {
     }
   };
 
+  const logMigration = (msg, type = 'info') => {
+    setMigrationLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), msg, type }]);
+  };
+
+  const generateId = () => {
+    return typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+  };
+
+  const transformWidgetData = (docItem) => {
+    const {
+      id, author, brand, theme, deleted, type, timeCreated, timeUpdated,
+      counterViews,
+      ...rest
+    } = docItem;
+
+    const baseType = (type || 'unknown').toLowerCase();
+    
+    const newDoc = {
+      type: baseType,
+      meta: {
+        id: id || '',
+        brand: brand || '',
+        theme: theme || '',
+        author: author || '',
+        deleted: !!deleted,
+        timeCreated: timeCreated || new Date(),
+        timeUpdated: timeUpdated || new Date()
+      },
+      stats: { views: counterViews || 0 },
+      data: {}
+    };
+
+    // Specific mapping
+    switch (baseType) {
+      case 'facts':
+        newDoc.data.title = rest.rencontre || (rest.factsData && rest.factsData.rencontre) || '';
+        newDoc.stats.reveal = rest.counterReveal || 0;
+        newDoc.data.date = rest.date || (rest.factsData && rest.factsData.date) || '';
+        
+        let newItems = {};
+        if (rest.factsData && rest.factsData.items) {
+          newItems = Array.isArray(rest.factsData.items) ? [...rest.factsData.items] : { ...rest.factsData.items };
+        } else if (rest.items) {
+          newItems = Array.isArray(rest.items) ? [...rest.items] : { ...rest.items };
+        }
+        
+        let cleanItems = [];
+        
+        Object.entries(newItems).forEach(([itemId, item]) => {
+          const actualId = item.id || itemId;
+          const { votes, ...itemWithoutVotes } = item;
+          cleanItems.push({ ...itemWithoutVotes, id: actualId });
+        });
+        
+        newDoc.data.items = cleanItems;
+        newDoc.stats.ratingStats = rest.ratingStats || rest.voteStats || {};
+        break;
+
+      case 'teaser':
+        newDoc.data.title = rest.teaserTitle || '';
+        newDoc.data.label = rest.teaserLabel || '';
+        newDoc.stats.clicks = rest.counterClicks || 0;
+        newDoc.data.img = rest.img || '';
+        break;
+
+      case 'quiz':
+        newDoc.data.title = rest.title || '';
+        newDoc.data.conclusion = rest.conclusion || {};
+        newDoc.data.questions = [];
+        newDoc.stats.statsQuestions = {};
+        
+        (rest.questions || []).forEach((q, idx) => {
+          const qId = q.id || generateId();
+          newDoc.data.questions.push({ ...q, id: qId });
+          if (rest.statsQuestions && rest.statsQuestions[idx]) {
+             newDoc.stats.statsQuestions[qId] = rest.statsQuestions[idx];
+          }
+        });
+
+        newDoc.stats.statsGlobal = rest.statsGlobal || {};
+        break;
+
+      case 'potm':
+        newDoc.data.context = rest.data?.context || rest.context || {};
+        newDoc.data.players = [];
+        newDoc.stats.playersVotes = {};
+        
+        const playersSource = rest.data?.players || rest.players || [];
+        const playersVotesSource = rest.stats?.playersVotes || rest.playersVotes || {};
+
+        (playersSource).forEach((p) => {
+          const pId = p.id || generateId();
+          const { votes, ...playerData } = p;
+          playerData.id = pId;
+          newDoc.data.players.push(playerData);
+          
+          let pVotes = undefined;
+          if (playersVotesSource[pId] !== undefined) {
+              pVotes = playersVotesSource[pId];
+          } else if (votes !== undefined) {
+              pVotes = votes;
+          }
+          newDoc.stats.playersVotes[pId] = pVotes || 0;
+        });
+        break;
+
+      case 'tinder':
+        newDoc.data.tinderTitle = rest.data?.tinderTitle || rest.tinderTitle || '';
+        newDoc.data.tinderLabel = rest.data?.tinderLabel || rest.tinderLabel || '';
+        newDoc.data.tinderLegend = rest.data?.tinderLegend || rest.tinderLegend || {};
+        newDoc.data.tinderCards = [];
+        newDoc.stats.tinderVotes = {};
+
+        const cardsSource = rest.data?.tinderCards || rest.tinderCards || [];
+        const votesSource = rest.stats?.tinderVotes || rest.tinderVotes || {};
+
+        (cardsSource).forEach((c, idx) => {
+          const cId = c.id || generateId();
+          newDoc.data.tinderCards.push({ ...c, id: cId });
+          
+          let cardVotes = undefined;
+          if (votesSource[cId] !== undefined) {
+             cardVotes = votesSource[cId];
+          } else if (votesSource[idx] !== undefined) {
+             cardVotes = votesSource[idx];
+          }
+          
+          if (cardVotes !== undefined) {
+            newDoc.stats.tinderVotes[cId] = cardVotes;
+          }
+        });
+        break;
+
+      case 'prono':
+        newDoc.data.pronoData = {};
+        newDoc.stats.itemVotes = {};
+        
+        if (rest.pronoData) {
+          Object.entries(rest.pronoData).forEach(([key, value]) => {
+             if (typeof value === 'object' && value !== null && value.votes !== undefined) {
+                newDoc.stats.itemVotes[key] = value.votes;
+                const { votes, ...itemData } = value;
+                newDoc.data.pronoData[key] = itemData;
+             } else {
+                newDoc.data.pronoData[key] = value;
+             }
+          });
+        }
+        break;
+
+      case 'folder':
+        newDoc.data.folderName = rest.data?.folderName || rest.folderName || '';
+        newDoc.data.folderLabel = rest.data?.folderLabel || rest.folderLabel || '';
+        newDoc.data.folderLabelColor = rest.data?.folderLabelColor || rest.folderLabelColor || '';
+        newDoc.data.img = rest.data?.img || rest.img || '';
+        newDoc.data.buttons = [];
+        newDoc.stats.buttonClicks = {};
+
+        const btnSource = rest.data?.buttons || rest.buttons || [];
+        const btnClicksSource = rest.stats?.buttonClicks || rest.buttonClicks || {};
+
+        (btnSource).forEach((b) => {
+          const bId = b.id || generateId();
+          const { buttonCounterClicks, ...btnData } = b;
+          btnData.id = bId;
+          newDoc.data.buttons.push(btnData);
+          
+          let bClicks = undefined;
+          if (btnClicksSource[bId] !== undefined) {
+              bClicks = btnClicksSource[bId];
+          } else if (buttonCounterClicks !== undefined) {
+              bClicks = buttonCounterClicks;
+          }
+          newDoc.stats.buttonClicks[bId] = bClicks || 0;
+        });
+        break;
+
+      case 'calendar':
+        newDoc.data.title = rest.calWording || rest.calName || '';
+        newDoc.stats.seeAllClicks = rest.counterSeeAllClicks || 0;
+        newDoc.data.dates = rest.dates || [];
+        newDoc.data.nbElemsToShow = rest.nbElemsToShow || 0;
+        break;
+
+      case 'poll':
+        newDoc.data.question = rest.data?.question || rest.pollTxt || '';
+        newDoc.data.answerTxts = [];
+        newDoc.stats.answerCounters = {};
+        
+        const ansSource = rest.data?.answerTxts || rest.answerTxts || [];
+        const ansCountersSource = rest.stats?.answerCounters || rest.answerCounters || {};
+
+        (ansSource).forEach((ans, idx) => {
+           const aId = (typeof ans === 'object' && ans.id) ? ans.id : generateId();
+           const text = (typeof ans === 'object') ? ans.text : ans;
+           newDoc.data.answerTxts.push({ id: aId, text });
+           
+           let count = 0;
+           if (ansCountersSource[aId] !== undefined) {
+               count = ansCountersSource[aId];
+           } else if (ansCountersSource[idx] !== undefined) {
+               count = ansCountersSource[idx];
+           } else if (rest.answerCounters && rest.answerCounters[idx] !== undefined) {
+               count = rest.answerCounters[idx];
+           }
+           newDoc.stats.answerCounters[aId] = count;
+        });
+        break;
+
+      case 'testimony':
+        newDoc.data.title = rest.title || '';
+        newDoc.stats.msgSent = rest.counterMsgSent || 0;
+        if (rest.content && typeof rest.content === 'object') {
+           Object.assign(newDoc.data, rest.content);
+        } else if (rest.content !== undefined) {
+           newDoc.data.content = rest.content;
+        }
+        break;
+
+      default:
+        newDoc.data = { ...rest };
+        break;
+    }
+
+    // Handle global link properties like `linkGlobal...`
+    Object.keys(rest).forEach(key => {
+      if (key.startsWith('linkGlobal')) {
+        newDoc.data[key] = rest[key];
+      }
+    });
+
+    const generateUnifiedTitle = (doc, legacyRest) => {
+       let extractedTitle = "";
+       switch (doc.type) {
+         case 'poll':
+           extractedTitle = doc.data?.question || legacyRest.pollTxt || "";
+           break;
+         case 'calendar':
+           extractedTitle = legacyRest.calName || legacyRest.calWording || doc.data?.title || "";
+           break;
+         case 'teaser':
+           extractedTitle = doc.data?.title || legacyRest.teaserTitle || "";
+           if (typeof extractedTitle === 'string') {
+             extractedTitle = extractedTitle.replace(/\\n|\n/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+           }
+           break;
+         case 'folder':
+           extractedTitle = doc.data?.folderName || legacyRest.folderName || "";
+           if (typeof extractedTitle === 'string') {
+             extractedTitle = extractedTitle.replace(/\\n|\n/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+           }
+           break;
+         case 'tinder':
+           extractedTitle = doc.data?.tinderTitle || legacyRest.tinderTitle || "";
+           break;
+         case 'quiz':
+           extractedTitle = doc.data?.title || legacyRest.title || "";
+           break;
+         case 'testimony':
+           extractedTitle = doc.data?.subject || legacyRest.content?.subject || legacyRest.subject || legacyRest.title || doc.data?.title || "Appel à témoignage";
+           break;
+         case 'potm':
+           extractedTitle = doc.data?.context?.text || legacyRest.context?.text || "";
+           break;
+         case 'prono':
+           const i1 = doc.data?.pronoData?.item1?.name || legacyRest.pronoData?.item1?.name;
+           const i2 = doc.data?.pronoData?.item2?.name || legacyRest.pronoData?.item2?.name;
+           if (i1 && i2) {
+               extractedTitle = `${i1} - ${i2}`;
+           }
+           break;
+         case 'facts':
+           extractedTitle = doc.data?.title || legacyRest.rencontre || "";
+           break;
+         default:
+           extractedTitle = doc.meta?.title || doc.data?.title || "";
+       }
+       return extractedTitle || "Sans titre";
+    };
+
+    newDoc.meta.title = generateUnifiedTitle(newDoc, rest);
+
+    return newDoc;
+  };
+
+  const confirmMigration = () => {
+    const sourceDocs = migrationEnv === 'prod' ? prodDocs : testDocs;
+    if (sourceDocs.length === 0) {
+      showToast('error', `Aucun document à migrer depuis la base de ${migrationEnv === 'prod' ? 'Prod' : 'Test'}.`);
+      return;
+    }
+    setShowMigrationModal(true);
+  };
+
+  const handleRunMigration = async () => {
+    setShowMigrationModal(false);
+    setMigrationStatus('running');
+    setMigrationLogs([]);
+    logMigration(`Démarrage de la migration Blue/Green vers la collection "${targetCollection}" (${migrationEnv === 'prod' ? 'Prod' : 'Test'})...`, 'info');
+    
+    let successCount = 0;
+    let errorCount = 0;
+
+    const sourceDocs = migrationEnv === 'prod' ? prodDocs : testDocs;
+    const targetDb = migrationEnv === 'prod' ? prodDb : db;
+
+    if (!targetDb) {
+      logMigration(`Erreur: BDD ${migrationEnv === 'prod' ? 'Prod' : 'Test'} non connectée.`, 'error');
+      setMigrationStatus('error');
+      return;
+    }
+
+    for (let i = 0; i < sourceDocs.length; i++) {
+      const docItem = sourceDocs[i];
+      setMigrationProgress({ current: i + 1, total: sourceDocs.length });
+      
+      try {
+        const transformedData = transformWidgetData(docItem);
+        const firestorePayload = convertToFirestoreTypes(transformedData);
+        
+        // Write to target DB
+        const targetDocRef = doc(targetDb, targetCollection.trim(), docItem.id);
+        await setDoc(targetDocRef, firestorePayload);
+        
+        // Migration de la sous-collection 'messages' pour les témoignages
+        if (transformedData.type === 'testimony') {
+          const oldMessagesRef = collection(targetDb, collectionName.trim(), docItem.id, 'messages');
+          const newMessagesRef = collection(targetDb, targetCollection.trim(), docItem.id, 'messages');
+          const messagesSnap = await getDocs(oldMessagesRef);
+          for (const mDoc of messagesSnap.docs) {
+            await setDoc(doc(newMessagesRef, mDoc.id), mDoc.data());
+          }
+        }
+        
+        successCount++;
+        // Log every 10 items or the last item to avoid spam
+        if (i % 10 === 0 || i === sourceDocs.length - 1) {
+            logMigration(`Migration du doc [${docItem.id}] (${i+1}/${sourceDocs.length}) réussie.`, 'success');
+        }
+      } catch (err) {
+        errorCount++;
+        logMigration(`Erreur lors de la migration du doc [${docItem.id}] : ${err.message}`, 'error');
+      }
+    }
+
+    logMigration(`Migration terminée ! ${successCount} succès, ${errorCount} erreurs.`, 'info');
+    setMigrationStatus(errorCount > 0 ? 'error' : 'done');
+    showToast('info', 'Migration terminée.');
+  };
+
+  const handleMigrateSingle = async (docIdToMigrate) => {
+    if (!docIdToMigrate || docIdToMigrate.trim() === '') {
+      showToast('error', 'Veuillez entrer un ID de document.');
+      return;
+    }
+    
+    const sourceDocs = migrationEnv === 'prod' ? prodDocs : testDocs;
+    const targetDb = migrationEnv === 'prod' ? prodDb : db;
+    
+    if (!targetDb) {
+      showToast('error', `Erreur: BDD ${migrationEnv === 'prod' ? 'Prod' : 'Test'} non connectée.`);
+      return;
+    }
+
+    const docItem = sourceDocs.find(d => d.id === docIdToMigrate.trim());
+    if (!docItem) {
+      showToast('error', `Le document "${docIdToMigrate}" n'est pas dans la liste des documents chargés (base de ${migrationEnv === 'prod' ? 'Prod' : 'Test'}).`);
+      return;
+    }
+
+    setMigrationStatus('running');
+    setMigrationLogs([]);
+    logMigration(`Démarrage de la migration pour le document unique "${docItem.id}"...`, 'info');
+    
+    try {
+      const transformedData = transformWidgetData(docItem);
+      const firestorePayload = convertToFirestoreTypes(transformedData);
+      
+      const targetDocRef = doc(targetDb, targetCollection.trim(), docItem.id);
+      await setDoc(targetDocRef, firestorePayload);
+      
+      // Migration de la sous-collection 'messages' pour les témoignages
+      if (transformedData.type === 'testimony') {
+        const oldMessagesRef = collection(targetDb, collectionName.trim(), docItem.id, 'messages');
+        const newMessagesRef = collection(targetDb, targetCollection.trim(), docItem.id, 'messages');
+        const messagesSnap = await getDocs(oldMessagesRef);
+        for (const mDoc of messagesSnap.docs) {
+          await setDoc(doc(newMessagesRef, mDoc.id), mDoc.data());
+        }
+      }
+      
+      logMigration(`Migration du doc [${docItem.id}] réussie.`, 'success');
+      setMigrationStatus('done');
+      showToast('success', `Document "${docItem.id}" migré avec succès !`);
+    } catch (err) {
+      console.error(err);
+      logMigration(`Erreur lors de la migration du doc [${docItem.id}] : ${err.message}`, 'error');
+      setMigrationStatus('error');
+      showToast('error', `Erreur lors de la migration du document.`);
+    }
+  };
+
   // Filters
   const filterList = (list, filterText, typeFilter) => {
     return list.filter(d => {
@@ -508,6 +920,37 @@ function App() {
   const filteredProdDocs = filterList(prodDocs, prodFilter, prodTypeFilter);
   const filteredTestDocs = filterList(testDocs, testFilter, testTypeFilter);
 
+  // Clone all filtered from BDD 1 to BDD 2 (Left to Right)
+  const handleCloneAllProdToTest = async () => {
+    if (!window.confirm(`Êtes-vous sûr de vouloir cloner les ${filteredProdDocs.length} documents de la Prod vers le Test ? Cela écrasera les documents existants portant le même ID dans la base de Test.`)) {
+      return;
+    }
+    
+    setIsCloning(true);
+    let successCount = 0;
+    let errorCount = 0;
+    
+    showToast('info', `Démarrage du clonage de ${filteredProdDocs.length} documents...`);
+    
+    for (const sourceDoc of filteredProdDocs) {
+      try {
+        const { id, ...docData } = sourceDoc;
+        const firestorePayload = convertToFirestoreTypes(docData);
+        
+        const targetDocRef = doc(db, collectionName.trim(), id);
+        await setDoc(targetDocRef, firestorePayload);
+        successCount++;
+      } catch (error) {
+        console.error(`Erreur clonage ${sourceDoc.id}:`, error);
+        errorCount++;
+      }
+    }
+    
+    setIsCloning(false);
+    fetchTestDocs();
+    showToast(errorCount === 0 ? 'success' : 'info', `Clonage terminé. Succès: ${successCount}. Erreurs: ${errorCount}.`);
+  };
+
   return (
     <div className="app-container">
       <header>
@@ -520,22 +963,6 @@ function App() {
           </span>
         </div>
 
-        {/* Global Collection name & Refresh */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-glass)', padding: '6px 12px', borderRadius: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <label style={{ fontSize: '0.7rem', margin: 0 }}>Collection :</label>
-            <input
-              type="text"
-              value={collectionName}
-              onChange={(e) => setCollectionName(e.target.value)}
-              placeholder="Ex: embeds"
-              style={{ padding: '6px 10px', fontSize: '0.8rem', width: '120px', background: 'rgba(0,0,0,0.2)' }}
-            />
-          </div>
-          <button className="btn" onClick={loadBothDbs} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-            🔄 Recharger les BDD
-          </button>
-        </div>
       </header>
 
       {alert && (
@@ -545,29 +972,53 @@ function App() {
         </div>
       )}
 
-      {/* Tabs Navigation */}
       <div className="tabs-nav">
         <button 
           className={`tab-btn ${activeTab === 'transfert' ? 'active' : ''}`}
           onClick={() => setActiveTab('transfert')}
         >
-          🔀 Transfert BDD
+          🔀 Transfert BDD prod {'->'} test
         </button>
         <button 
           className={`tab-btn ${activeTab === 'refactor' ? 'active' : ''}`}
-          onClick={() => setActiveTab('refactor')}
+          onClick={() => { setActiveTab('refactor'); setMigrationEnv('test'); }}
         >
-          🛠️ Refactor
+          🔀 Transfert collection BDD test embeds {'->'} widgets
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === 'refactor-prod' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('refactor-prod'); setMigrationEnv('prod'); }}
+        >
+          🔀 Transfert collection BDD prod embeds {'->'} widgets
         </button>
       </div>
 
       {activeTab === 'transfert' && (
-        <div className="main-grid">
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-glass)', padding: '6px 12px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.7rem', margin: 0 }}>Collection :</label>
+                <input
+                  type="text"
+                  value={collectionName}
+                  onChange={(e) => setCollectionName(e.target.value)}
+                  placeholder="Ex: embeds"
+                  style={{ padding: '6px 10px', fontSize: '0.8rem', width: '120px', background: 'rgba(0,0,0,0.2)' }}
+                />
+              </div>
+              <button className="btn" onClick={loadBothDbs} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
+                🔄 Recharger les BDD
+              </button>
+            </div>
+          </div>
+
+          <div className="main-grid">
           
           {/* Left Column: Database 1 (Production) */}
           <div className="glass-panel">
             <div className="panel-title">
-              <span>🗄️ BDD 1 : Production</span>
+              <span>🗄️ BDD 1 : Production ({filteredProdDocs.length})</span>
               <span className={`status-badge ${prodStatus.status}`}>
                 {prodStatus.status === 'connected' ? `🟢 ${prodStatus.message}` : prodStatus.message}
               </span>
@@ -628,9 +1079,25 @@ function App() {
             </div>
           </div>
 
-          {/* Middle Column: Selected Document JSON Editor */}
-          <div className="glass-panel" style={{ border: '1px solid rgba(59, 130, 246, 0.25)' }}>
-            <div className="panel-title" style={{ borderColor: 'rgba(59, 130, 246, 0.15)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', minHeight: 0 }}>
+            <div className="glass-panel" style={{ border: '1px solid rgba(234, 179, 8, 0.4)', background: 'rgba(234, 179, 8, 0.05)', padding: '16px', height: 'auto', minHeight: 'auto', flexShrink: 0 }}>
+              <div style={{ textAlign: 'center' }}>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: '12px', fontWeight: 'bold', fontSize: '0.9rem' }}
+                  onClick={handleCloneAllProdToTest}
+                  disabled={isCloning || filteredProdDocs.length === 0}
+                >
+                  🚀 Cloner les {filteredProdDocs.length} éléments de Prod vers Test
+                </button>
+                <p style={{ fontSize: '0.75rem', marginTop: '8px', color: 'var(--text-muted)' }}>
+                  Migre tous les documents filtrés affichés à gauche vers la base de test.
+                </p>
+              </div>
+            </div>
+
+            <div className="glass-panel" style={{ flex: 1, border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+              <div className="panel-title" style={{ borderColor: 'rgba(59, 130, 246, 0.15)' }}>
               <span>📝 Éditeur du document</span>
               
               {/* Editor sub-tabs */}
@@ -735,10 +1202,12 @@ function App() {
             </div>
           </div>
 
+          </div>
+
           {/* Right Column: Database 2 (Test) */}
           <div className="glass-panel">
             <div className="panel-title">
-              <span>🗄️ BDD 2 : Test</span>
+              <span>🗄️ BDD 2 : Test ({filteredTestDocs.length})</span>
               <span className={`status-badge ${testStatus.status}`}>
                 {testStatus.status === 'connected' ? `🟢 ${testStatus.message}` : testStatus.message}
               </span>
@@ -798,15 +1267,153 @@ function App() {
               </div>
             </div>
           </div>
-
         </div>
+      </>
       )}
 
-      {activeTab === 'refactor' && (
-        <div className="glass-panel" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-            <h2 style={{ fontSize: '1.5rem', marginBottom: '8px', color: 'var(--text-main)' }}>Outil de Refactoring</h2>
-            <p>Cet espace est prêt pour accueillir la logique de modification en masse !</p>
+      {(activeTab === 'refactor' || activeTab === 'refactor-prod') && (() => {
+        const sourceDocs = migrationEnv === 'prod' ? prodDocs : testDocs;
+        const envLabel = migrationEnv === 'prod' ? 'Production (BDD 1)' : 'Test (BDD 2)';
+        
+        return (
+        <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div className="panel-title">
+            <span>🛠️ Outil de Migration (Blue/Green) - {envLabel}</span>
+          </div>
+          
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className={`alert ${migrationEnv === 'prod' ? 'alert-error' : 'alert-info'}`}>
+              <span>⚠️</span>
+              <div>
+                <strong>Environnement de {migrationEnv === 'prod' ? 'PRODUCTION' : 'TEST'}</strong>
+                <p style={{ margin: '4px 0 0', fontSize: '0.85rem' }}>
+                  Ce script va lire les {sourceDocs.length} documents de la collection <strong>{collectionName}</strong> dans la BDD de {migrationEnv === 'prod' ? 'Prod' : 'Test'}.<br/>
+                  Il appliquera le mapping de structure et écrira le résultat dans la collection cible :
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Collection Source :</label>
+                <input
+                  type="text"
+                  value={collectionName}
+                  onChange={(e) => setCollectionName(e.target.value)}
+                  placeholder="Ex: embeds"
+                  className="input"
+                  style={{ padding: '8px 12px', fontSize: '0.9rem', width: '180px' }}
+                />
+              </div>
+              <span style={{ fontSize: '1.2rem', opacity: 0.5 }}>➡️</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Collection Cible :</label>
+                <input
+                  type="text"
+                  value={targetCollection}
+                  onChange={(e) => setTargetCollection(e.target.value)}
+                  placeholder="Ex: widgets"
+                  className="input"
+                  style={{ padding: '8px 12px', fontSize: '0.9rem', width: '180px' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <button 
+                className={`btn ${migrationEnv === 'prod' ? 'btn-danger' : 'btn-success'}`}
+                onClick={confirmMigration}
+                disabled={migrationStatus === 'running' || sourceDocs.length === 0}
+                style={{ padding: '12px 24px', fontSize: '1rem' }}
+              >
+                {migrationStatus === 'running' ? 'Migration en cours...' : `🚀 Lancer la Migration vers "${targetCollection}"`}
+              </button>
+              
+              {migrationStatus === 'running' && (
+                <div style={{ flex: 1 }}>
+                  <div className="progress-bar-container">
+                    <div 
+                      className="progress-bar-fill" 
+                      style={{ width: `${(migrationProgress.current / migrationProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    {migrationProgress.current} / {migrationProgress.total} documents
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '20px', padding: '16px', borderTop: '1px solid var(--border-color)' }}>
+               <div>
+                  <h4 style={{ margin: '0 0 8px 0' }}>Migrer un seul document</h4>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#64748b' }}>Utile pour tester la migration sur un document spécifique.</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="text" 
+                      id="single-migrate-id"
+                      className="input" 
+                      placeholder="ID du document (ex: abc123def)"
+                      style={{ width: '250px' }}
+                    />
+                    <button 
+                      className="btn btn-primary"
+                      onClick={() => {
+                        const val = document.getElementById('single-migrate-id').value;
+                        handleMigrateSingle(val);
+                      }}
+                      disabled={migrationStatus === 'running'}
+                    >
+                      Migrer ce document
+                    </button>
+                  </div>
+               </div>
+            </div>
+
+            <div style={{ 
+              background: 'rgba(0,0,0,0.4)', 
+              borderRadius: '8px', 
+              padding: '12px', 
+              fontFamily: 'monospace',
+              fontSize: '0.85rem',
+              height: '300px',
+              overflowY: 'auto',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              {migrationLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)' }}>Aucun log. Cliquez sur le bouton pour démarrer.</div>
+              ) : (
+                migrationLogs.map((log, idx) => (
+                  <div key={idx} style={{ 
+                    marginBottom: '4px',
+                    color: log.type === 'error' ? '#ef4444' : log.type === 'success' ? '#10b981' : '#e2e8f0'
+                  }}>
+                    <span style={{ color: 'var(--text-muted)', marginRight: '8px' }}>[{log.time}]</span>
+                    {log.msg}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+      {showMigrationModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+        }}>
+          <div className="glass-panel" style={{ padding: '24px', maxWidth: '500px', width: '100%', border: '1px solid var(--border-glass)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '16px', color: 'var(--text-main)' }}>⚠️ Confirmer la migration</h3>
+            <p style={{ color: 'var(--text-muted)' }}>
+              Voulez-vous migrer <strong>{migrationEnv === 'prod' ? prodDocs.length : testDocs.length}</strong> documents de la base {migrationEnv === 'prod' ? 'PROD' : 'TEST'} ("{collectionName}") vers la collection "{targetCollection}" ({migrationEnv === 'prod' ? 'PROD' : 'TEST'}) ?
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+              <button className="btn btn-secondary" onClick={() => setShowMigrationModal(false)}>Annuler</button>
+              <button className="btn btn-success" onClick={handleRunMigration}>Confirmer</button>
+            </div>
           </div>
         </div>
       )}

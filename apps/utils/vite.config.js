@@ -33,14 +33,12 @@ export default defineConfig(() => {
     base: "./",
     plugins: [react()],
     define: {
-      'process.env.PROD_FIREBASE_CONFIG': JSON.stringify({
-        apiKey: prodEnv.VITE_FIREBASE_API_KEY || '',
-        authDomain: prodEnv.VITE_FIREBASE_AUTH_DOMAIN || '',
-        projectId: prodEnv.VITE_FIREBASE_PROJECT_ID || '',
-        storageBucket: prodEnv.VITE_FIREBASE_STORAGE_BUCKET || '',
-        messagingSenderId: prodEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-        appId: prodEnv.VITE_FIREBASE_APP_ID || '',
-      })
+      'import.meta.env.VITE_FIREBASE_PROD_API_KEY': JSON.stringify(prodEnv.VITE_FIREBASE_API_KEY || ''),
+      'import.meta.env.VITE_FIREBASE_PROD_AUTH_DOMAIN': JSON.stringify(prodEnv.VITE_FIREBASE_AUTH_DOMAIN || ''),
+      'import.meta.env.VITE_FIREBASE_PROD_PROJECT_ID': JSON.stringify(prodEnv.VITE_FIREBASE_PROJECT_ID || ''),
+      'import.meta.env.VITE_FIREBASE_PROD_STORAGE_BUCKET': JSON.stringify(prodEnv.VITE_FIREBASE_STORAGE_BUCKET || ''),
+      'import.meta.env.VITE_FIREBASE_PROD_MESSAGING_SENDER_ID': JSON.stringify(prodEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || ''),
+      'import.meta.env.VITE_FIREBASE_PROD_APP_ID': JSON.stringify(prodEnv.VITE_FIREBASE_APP_ID || ''),
     },
     server: {
       open: true,

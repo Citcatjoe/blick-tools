@@ -47,16 +47,18 @@ export function dataLayerPushLinkGlobalClick(docId, widgetName = 'WIDGET') {
  * Incrémente le compteur de vues dans Firebase pour un document donné de manière atomique.
  */
 export async function incrementCounterViews(docId) {
-  const ref = doc(db, 'embeds', docId);
   try {
     await runTransaction(db, async (transaction) => {
-      const docSnap = await transaction.get(ref);
-      if (!docSnap.exists()) return;
-      const current = docSnap.data().counterViews || 0;
-      transaction.update(ref, { counterViews: current + 1 });
+      const widgetRef = doc(db, 'widgets', docId);
+      const widgetSnap = await transaction.get(widgetRef);
+      if (widgetSnap.exists()) {
+        const stats = widgetSnap.data().stats || {};
+        const current = stats.views || 0;
+        transaction.update(widgetRef, { 'stats.views': current + 1 });
+      }
     });
   } catch (e) {
-    console.error('Erreur incrémentation counterViews:', e);
+    console.error('Erreur incrémentation views:', e);
   }
 }
 
@@ -64,15 +66,17 @@ export async function incrementCounterViews(docId) {
  * Incrémente le compteur de reveal dans Firebase pour un document donné de manière atomique.
  */
 export async function incrementCounterReveal(docId) {
-  const ref = doc(db, 'embeds', docId);
   try {
     await runTransaction(db, async (transaction) => {
-      const docSnap = await transaction.get(ref);
-      if (!docSnap.exists()) return;
-      const current = docSnap.data().counterReveal || 0;
-      transaction.update(ref, { counterReveal: current + 1 });
+      const widgetRef = doc(db, 'widgets', docId);
+      const widgetSnap = await transaction.get(widgetRef);
+      if (widgetSnap.exists()) {
+        const stats = widgetSnap.data().stats || {};
+        const current = stats.reveal || 0;
+        transaction.update(widgetRef, { 'stats.reveal': current + 1 });
+      }
     });
   } catch (e) {
-    console.error('Erreur incrémentation counterReveal:', e);
+    console.error('Erreur incrémentation reveal:', e);
   }
 }
