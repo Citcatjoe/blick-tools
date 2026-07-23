@@ -50,7 +50,9 @@ service cloud.firestore {
           // FACTS
           (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['ratingStats']) && isRatingStatsNumeric(request.resource.data.stats.ratingStats)) ||
           // FACTS Item counters
-          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['itemCounters']))
+          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['itemCounters'])) ||
+          // NATINOTES (une note déposée = un seul joueur touché)
+          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['playerRatings']) && isPlayerRatingsUpdate(request.resource.data.stats.playerRatings, resource.data.stats.get('playerRatings', {})))
         )
       );
     }
@@ -68,6 +70,16 @@ service cloud.firestore {
         request.resource.data.name.size() > 0 &&
         request.resource.data.text.size() > 0
       );
+    }
+
+    // =========================================================================
+    // 🟢 COLLECTION : TEAMS (catalogues de joueurs — natinotes)
+    // =========================================================================
+    // Données de référence éditées depuis le backend. Aucun accès anonyme :
+    // les apps clientes ne lisent jamais cette collection — un widget fige le
+    // nom et le portrait de ses joueurs au moment de sa validation.
+    match /teams/{teamId} {
+      allow read, write: if request.auth != null;
     }
 
     // =========================================================================
@@ -234,6 +246,20 @@ service cloud.firestore {
              // Si vous avez un nombre fixe de joueurs, il est plus sûr de viser les index.
     }
     
+    // FONCTION POUR NATINOTES
+    // `stats.playerRatings` a la forme { <playerId>: { "1".."6": <nombre> } }.
+    // Les clés joueur sont dynamiques et les règles Firestore ne bouclent pas :
+    // on ne peut donc pas valider la distribution elle-même (il faudrait extraire
+    // la clé modifiée, or changedKeys() renvoie un Set non indexable).
+    // On borne ce qui est bornable : un seul joueur modifié par écriture, ce qui
+    // correspond exactement à updatePlayerRatingTransactional (un vote à la fois).
+    // Un lecteur peut donc encore fausser SA propre distribution, mais pas
+    // toucher un autre joueur ni un autre champ.
+    function isPlayerRatingsUpdate(newRatings, oldRatings) {
+      return newRatings is map &&
+        newRatings.diff(oldRatings).changedKeys().size() == 1;
+    }
+
     //FONCTION POUR RatingWidget DE FACTS
     function isRatingStatsNumeric(stats) {
       let keys = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];

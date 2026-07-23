@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@theme {
+  --text-xl: 19px;
+  --text-2xl: 22px;
+  --breakpoint-sm: 400px;
+}
+
+/*
+  Couleurs du widget. Les valeurs viennent du design system (base.css, chargé
+  depuis le CDN dans index.html) : c'est ce qui fait fonctionner `#theme=dark`
+  sans une ligne de JS. Les fallbacks ne servent qu'au dev isolé, sans le CDN.
+*/
+:root {
+  font-family: InterVariable;
+  font-weight: 400;
+
+  max-width: 632px;
+}
+
+html
+{
+  background-color: var(--color-fill-default);
+}
+
+/*
+  Couleurs : uniquement des tokens du design system (base.css, CDN). Ce sont eux
+  qui portent le darkmode via `#theme=dark`. Aucune valeur en dur ici — chaque
+  classe pointe sur la bonne variable selon le rôle : texte / fond / liseré.
+*/
+
+/* Texte */
+.nn-text-weak  { color: var(--color-text-weak); }
+.nn-text-brand { color: var(--color-text-brand); }
+.nn-text-sport { color: var(--color-text-sport); }
+
+/* Liserés */
+.nn-stroke-brand { border-color: var(--color-stroke-brand); }
+.nn-stroke-weak  { border-color: var(--color-stroke-weak); }
+
+/* Anneau intérieur du portrait = fond de base (blanc en clair, noir en sombre) */
+.nn-fill-default { background-color: var(--color-fill-default); }
+
+/* Fond de boîte discret (Barème…) */
+.nn-fill-weak { background-color: var(--color-fill-weak); }
+
+/* Boutons de note 1–6 */
+.nn-rating-btn {
+  background-color: var(--color-fill-strong);
+  color: var(--color-text-default);
+}
+
+/* Pastilles de note après vote */
+.nn-badge--blick     { background-color: var(--color-fill-brand); }
+.nn-badge--reader    { background-color: var(--color-fill-strongest); }
+.nn-badge--community { background-color: var(--color-fill-sport); }
+
+/*
+  Onglets du récap : état sélectionné via [aria-selected], survol assombri vers
+  la teinte -900 du design system.
+*/
+.nn-tab {
+  color: var(--color-text-weak);
+  background-color: var(--color-fill-strong);
+}
+/* Survol seulement sur un onglet NON actif : un onglet déjà sélectionné ne doit
+   pas réagir (sinon il laisse croire qu'une action reste possible). */
+.nn-tab[aria-selected="false"]:hover { background-color: var(--color-static-neutral-300); }
+.nn-tab[aria-selected="true"] { color: var(--color-static-white); }
+.nn-tab--brand[aria-selected="true"]   { background-color: var(--color-fill-brand); }
+.nn-tab--neutral[aria-selected="true"] { background-color: var(--color-fill-strongest); }
+.nn-tab--sport[aria-selected="true"]   { background-color: var(--color-fill-sport); }
+
+/*
+  Classement : couleur des barres et des valeurs selon la vue active, portée par
+  une classe `nn-view--*` sur le conteneur.
+*/
+.natinotes-track { background-color: var(--color-fill-strong); }
+
+.nn-view--blick     .natinotes-bar { background-color: var(--color-fill-brand); }
+.nn-view--reader    .natinotes-bar { background-color: var(--color-fill-strongest); }
+.nn-view--community .natinotes-bar { background-color: var(--color-fill-sport); }
+
+.nn-view--blick     .nn-value { color: var(--color-text-brand); }
+.nn-view--reader    .nn-value { color: var(--color-text-weak); }
+.nn-view--community .nn-value { color: var(--color-text-sport); }
+/* Joueur sans note : gris, quelle que soit la vue (placé après pour l'emporter) */
+.nn-value.nn-value--unrated { color: var(--color-text-weak); }
+
+/*
+  Les lignes gardent leur ordre dans le DOM, seul leur `transform` change d'un
+  onglet à l'autre — d'où le réordonnancement animé.
+*/
+.natinotes-row {
+  transition: transform 300ms ease, opacity 300ms ease;
+}
+
+.natinotes-bar {
+  transition: width 300ms ease, background-color 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .natinotes-row,
+  .natinotes-bar {
+    transition: none;
+  }
+}
+
+/* Le paragraphe du journaliste arrive en HTML depuis RichTextEditor */
+.natinotes-comment a {
+  color: var(--color-text-brand);
+  text-decoration: underline;
+}
+
+.natinotes-comment a:hover {
+  color: var(--color-static-red-900);
+}
+
+/* nom des joueurs */
+h2 {
+  font-family: BlickVariable;
+}
+
+/* Titres (Barème, Récap) */
+h3 {
+  color: var(--color-text-default);
+}
+
+.classement {
+  background-color: var(--color-fill-weak);
+  /* padding: 20px; */
+}
+
+main {
+  background-color: var(--color-fill-default);
+  color: var(--color-text-default);
+}

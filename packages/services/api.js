@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, getDoc, getDocs, collection, runTransaction, onSnapshot, deleteField } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, runTransaction, onSnapshot, deleteField, serverTimestamp } from 'firebase/firestore';
 
 /**
  * Récupère les données d'un widget spécifique via son ID.
@@ -186,6 +186,120 @@ export async function updateRatingStatsTransactional(docId, ratingValue, collect
     });
   } catch (error) {
     console.error('Error updating rating stats:', error);
+    throw error;
+  }
+}
+
+/**
+ * Charge le catalogue d'une équipe (collection `teams`, un document par équipe).
+ *
+ * Réservée au backend : les apps clientes ne lisent jamais cette collection,
+ * puisqu'un widget fige le nom et le portrait de ses joueurs à la validation.
+ *
+ * Retourne `null` si l'équipe n'existe pas encore — c'est le cas normal avant
+ * le premier import, pas une erreur.
+ */
+export async function fetchTeam(teamId) {
+  try {
+    const snap = await getDoc(doc(db, 'teams', teamId));
+    return snap.exists() ? snap.data() : null;
+  } catch (error) {
+    console.error('Error fetching team:', error);
+    throw error;
+  }
+}
+
+/**
+ * Liste toutes les équipes existantes, pour alimenter les menus du backend.
+ *
+ * Les équipes sont créées à la demande : il n'y a pas de liste de référence en
+ * dur côté code, seulement les documents réellement constitués.
+ *
+ * Retourne des objets `{ id, ...données }` — l'id du document est nécessaire
+ * pour recharger ou enregistrer l'équipe ensuite.
+ */
+export async function fetchAllTeams() {
+  try {
+    const snap = await getDocs(collection(db, 'teams'));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('Error fetching teams:', error);
+    throw error;
+  }
+}
+
+/**
+ * Enregistre le catalogue d'une équipe.
+ *
+ * Le document porte le tableau complet des joueurs : deux journalistes éditant
+ * la même équipe en parallèle s'écraseraient mutuellement, le dernier effaçant
+ * le travail du premier sans que personne ne le voie.
+ *
+ * La transaction relit donc `timeUpdated` et refuse l'écriture si le document a
+ * changé depuis son chargement dans le formulaire. Une transaction seule ne
+ * suffirait pas : elle garantit l'atomicité, pas que l'état de départ est encore
+ * d'actualité.
+ *
+ * @param {string|null} loadedAt - `timeUpdated` en millisecondes au moment du
+ *   chargement, ou `null` pour une création. Un décalage lève `TEAM_CONFLICT`.
+ */
+export async function saveTeamTransactional(teamId, teamData, loadedAt = null) {
+  const docRef = doc(db, 'teams', teamId);
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(docRef);
+      const currentAt = snap.exists() ? (snap.data().timeUpdated?.toMillis?.() ?? null) : null;
+
+      if (currentAt !== loadedAt) {
+        const conflict = new Error('TEAM_CONFLICT');
+        conflict.code = 'TEAM_CONFLICT';
+        throw conflict;
+      }
+
+      transaction.set(docRef, { ...teamData, timeUpdated: serverTimestamp() });
+    });
+  } catch (error) {
+    if (error.code !== 'TEAM_CONFLICT') console.error('Error saving team:', error);
+    throw error;
+  }
+}
+
+/**
+ * Enregistre la note d'un lecteur pour un joueur d'un widget `natinotes`.
+ *
+ * stats.playerRatings est une distribution par joueur puis par valeur de note :
+ *   { "denis-zakaria": { "5": 40, "6": 8 }, … }
+ *
+ * L'écriture est ciblée sur la seule clé du joueur noté, pour que deux lecteurs
+ * notant deux joueurs différents ne se marchent pas dessus.
+ *
+ * Retourne la distribution du joueur après incrément, afin que l'app cliente
+ * affiche une moyenne incluant la note qui vient d'être déposée, sans relire.
+ */
+export async function updatePlayerRatingTransactional(docId, playerId, ratingValue, collectionName = 'widgets') {
+  const docRef = doc(db, collectionName, docId);
+  try {
+    let updatedDistribution = {};
+
+    await runTransaction(db, async (transaction) => {
+      const docSnap = await transaction.get(docRef);
+      if (!docSnap.exists()) throw new Error('Document does not exist!');
+
+      const data = docSnap.data();
+      const playerRatings = { ...(data.stats?.playerRatings || {}) };
+      const distribution = { ...(playerRatings[playerId] || {}) };
+
+      const key = ratingValue.toString();
+      distribution[key] = (distribution[key] || 0) + 1;
+      playerRatings[playerId] = distribution;
+      updatedDistribution = distribution;
+
+      transaction.update(docRef, { 'stats.playerRatings': playerRatings });
+    });
+
+    return updatedDistribution;
+  } catch (error) {
+    console.error('Error updating player rating:', error);
     throw error;
   }
 }
