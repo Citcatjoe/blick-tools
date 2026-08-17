@@ -64,7 +64,7 @@ function Classement({ players, ratings, readerRatings }) {
   if (players.length === 0) return null;
 
   return (
-    <section className="classement mt-10 p-2.5 sm:p-5">
+    <section className="classement mt-6 sm:mt-8 p-2.5 sm:p-5">
       <h3 className="m-0 text-lg font-bold">
         Récap des avis
       </h3>

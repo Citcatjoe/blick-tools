@@ -1,5 +1,6 @@
 import defaultPortrait from '../assets/default.jpg';
 import { countRatings, averageRating } from '../utils/ratings';
+import { focalStyle } from '../utils/portraitFocal';
 
 const RATINGS = [6, 5, 4, 3, 2, 1];
 
@@ -26,19 +27,26 @@ function PlayerCard({ player, distribution, readerRating, onRate, isSubmitting }
       <div className="flex items-center gap-4">
         {/* Repli sur default.jpg si l'URL est absente OU cassée : le portrait
             est figé à la publication, mais l'objet Storage peut avoir été
-            supprimé depuis (remplacement dans l'éditeur d'équipes). */}
-        <img
-          src={player.img || defaultPortrait}
-          alt=""
-          width="72"
-          height="72"
-          onError={(e) => {
-            if (e.currentTarget.dataset.fallback) return;
-            e.currentTarget.dataset.fallback = '1';
-            e.currentTarget.src = defaultPortrait;
-          }}
-          className="h-16 w-16 sm:h-[72px] sm:w-[72px] shrink-0 rounded-full object-cover object-top border-2 border-solid nn-stroke-brand p-0.5 nn-fill-default box-border"
-        />
+            supprimé depuis (remplacement dans l'éditeur d'équipes).
+            L'anneau (bordure + p-0.5) reste sur le conteneur ; le cadrage
+            (`focalStyle`) est reclippé au cercle par l'`overflow-hidden` interne. */}
+        <span className="h-16 w-16 sm:h-[72px] sm:w-[72px] shrink-0 rounded-full border-2 border-solid nn-stroke-brand p-0.5 nn-fill-default box-border block">
+          <span className="block h-full w-full rounded-full overflow-hidden">
+            <img
+              src={player.img || defaultPortrait}
+              alt=""
+              width="72"
+              height="72"
+              onError={(e) => {
+                if (e.currentTarget.dataset.fallback) return;
+                e.currentTarget.dataset.fallback = '1';
+                e.currentTarget.src = defaultPortrait;
+              }}
+              className="h-full w-full object-cover"
+              style={focalStyle(player.focal)}
+            />
+          </span>
+        </span>
 
         <div className="min-w-0 flex-1 pt-1">
           <div className="flex flex-wrap items-center gap-x-7 gap-y-2">

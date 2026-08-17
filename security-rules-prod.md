@@ -1,3 +1,14 @@
+# Règles de sécurité — Production
+
+Source de vérité des règles de sécurité **Firestore** de la base **prod**.
+À coller dans : console Firebase → Firestore Database → Rules.
+
+> ℹ️ **Storage** : les règles du bucket (portraits natinotes) ne sont pas gérées
+> ici — la prod Storage est en `allow all` pour l'instant, par choix. À
+> restreindre le jour où ce sera nécessaire (écriture/suppression authentifiées,
+> lecture publique sur `portraits/`).
+
+```javascript
 rules_version = '2';
 
 service cloud.firestore {
@@ -9,10 +20,9 @@ service cloud.firestore {
     match /widgets/{document=**} {
       allow read: if true;
       
-      // --- 🚨 RÈGLE TEMPORAIRE POUR LA MIGRATION (À RETIRER APRÈS) 🚨 ---
-      allow create: if true;
-      // ----------------------------------------------------------------
-      
+      // Création réservée à l'admin authentifié (migration close).
+      allow create: if request.auth != null;
+
       allow delete: if request.auth != null;
       
       // L'admin peut tout modifier
@@ -250,14 +260,19 @@ service cloud.firestore {
     // `stats.playerRatings` a la forme { <playerId>: { "1".."6": <nombre> } }.
     // Les clés joueur sont dynamiques et les règles Firestore ne bouclent pas :
     // on ne peut donc pas valider la distribution elle-même (il faudrait extraire
-    // la clé modifiée, or changedKeys() renvoie un Set non indexable).
-    // On borne ce qui est bornable : un seul joueur modifié par écriture, ce qui
+    // la clé modifiée, or affectedKeys() renvoie un Set non indexable).
+    // On borne ce qui est bornable : un seul joueur touché par écriture, ce qui
     // correspond exactement à updatePlayerRatingTransactional (un vote à la fois).
     // Un lecteur peut donc encore fausser SA propre distribution, mais pas
     // toucher un autre joueur ni un autre champ.
+    //
+    // ⚠️ affectedKeys() et NON changedKeys() : la 1re note d'un joueur AJOUTE sa
+    // clé (absente avant), or changedKeys() ne compte que les clés déjà présentes
+    // dont la valeur change — il ignore les ajouts. affectedKeys() = ajouts ∪
+    // suppressions ∪ modifications, donc il couvre bien le tout premier vote.
     function isPlayerRatingsUpdate(newRatings, oldRatings) {
       return newRatings is map &&
-        newRatings.diff(oldRatings).changedKeys().size() == 1;
+        newRatings.diff(oldRatings).affectedKeys().size() == 1;
     }
 
     //FONCTION POUR RatingWidget DE FACTS
@@ -271,3 +286,11 @@ service cloud.firestore {
     }
   }
 }
+```
+
+## Déploiement
+
+1. **Basculer sur `.env-prod`** avant de builder/déployer les apps (backend + natinotes).
+2. **Firestore** : copier le bloc ci-dessus dans la console → Firestore → Rules → Publier.
+3. Vérifier après coup : un vote natinotes (anonyme) passe, et l'édition d'une
+   équipe + l'upload d'un portrait (authentifié) passent.

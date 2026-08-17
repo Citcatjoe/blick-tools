@@ -148,8 +148,8 @@ function App() {
         <Bareme />
       </div>
 
-      <div className="mt-6">
-        {players.map((player, index) => (
+      <div className="mt-2">
+        {players.map((player) => (
           <div key={player.id}>
             <PlayerCard
               player={player}
@@ -158,10 +158,8 @@ function App() {
               isSubmitting={pendingPlayerId === player.id}
               onRate={(value) => handleRate(player.id, value)}
             />
-            {/* Séparateur entre les joueurs, pas après le dernier */}
-            {index < players.length - 1 && (
-              <hr className="m-0 border-0 border-t nn-stroke-weak" />
-            )}
+            {/* Séparateur après chaque joueur, dernier inclus */}
+            <hr className="m-0 border-0 border-t nn-stroke-weak" />
           </div>
         ))}
       </div>

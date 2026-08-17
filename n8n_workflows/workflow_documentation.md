@@ -40,6 +40,13 @@ graph TD
    - L'IA ne génère plus de propositions de widgets. Elle produit uniquement l'analyse textuelle (`analyse_editoriale`) sur le Top 5.
 3. **Optimisation "Cuisine" & Slack** :
    - Le code complexe de mapping des titres et des compteurs est supprimé. Tout widget a son titre dans `doc.meta.title` et son engagement dans `doc.stats.views` (ou `doc.stats.votes` selon le type).
+4. **Ajout du type `natinotes`** (Notes de la Nati) :
+   - La fonction `calculateEngagement` gère désormais ce type : l'engagement est la **somme de tous les compteurs de votes** stockés dans `doc.stats.playerRatings`. Cette map est structurée `{ "<slug-joueur>": { "<note>": <nbVotes> } }` — on additionne tous les compteurs, tous joueurs et toutes notes confondus, quel que soit le nombre de joueurs ou la répartition des votes.
+   - Le libellé français a été ajouté au `typeFrMap`.
+5. **Correction de la durée d'exposition (17 août 2026)** :
+   - Lors de la simplification du nœud `Cuisine`, le champ `dureeJours` avait été laissé **codé en dur à `1`** (le calcul existait dans la version legacy sous le nom `jours_actifs`, il n'a pas été reporté). Résultat : toutes les lignes du Top 5 affichaient « sur 1 j. » quelle que soit la date de création réelle.
+   - `dureeJours` est désormais calculé depuis `meta.timeCreated` jusqu'à la date du run (plafonnée à la fin du mois analysé), en jours calendaires bornes incluses.
+   - Un helper `parseFirestoreDate` gère les différents formats de `timeCreated` (Timestamp Firestore, string ISO, millisecondes legacy), et un champ `dateCreation` est exposé dans le Top 5 pour contrôler le parsing.
 
 ---
 
@@ -61,11 +68,14 @@ Ce code peut rester le même que l'ancien. Il génère les bornes ISO (`current`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### 2. Nœud "8. Cuisine" (Grandement Simplifié !)
+📅 **Dernière version : 17 août 2026** *(Correction du calcul de `dureeJours`, qui était figé à 1)*
+
 Ce code récupère les données de Firebase et Monday, et prépare le Top 5.
 
 ```javascript
 // =========================================================================
 // NŒUD n8n : Cuisine (Version Refactorisée)
+// DERNIÈRE MISE À JOUR : 17 août 2026 (Calcul réel de la durée d'exposition)
 // DESCRIPTION : Moteur d'agrégation, calculs d'engagement (Top 5)
 // =========================================================================
 
@@ -143,6 +153,17 @@ function calculateEngagement(doc) {
                 Object.values(stats.statsGlobal.scoreDistribution).forEach(v => eng += Number(v || 0));
             }
             break;
+        case 'natinotes':
+            // stats.playerRatings = { "<slug-joueur>": { "<note>": <nbVotes>, ... }, ... }
+            // Engagement = somme de tous les compteurs de votes, tous joueurs et toutes notes confondus.
+            if (stats.playerRatings) {
+                Object.values(stats.playerRatings).forEach(distribution => {
+                    if (distribution && typeof distribution === 'object') {
+                        Object.values(distribution).forEach(v => eng += Number(v || 0));
+                    }
+                });
+            }
+            break;
         case 'calendar':
         default:
             eng = 0;
@@ -151,12 +172,63 @@ function calculateEngagement(doc) {
     return eng;
 }
 
+// --- 2bis. CALCUL DE LA DURÉE D'EXPOSITION ---
+// `meta.timeCreated` est écrit avec serverTimestamp() (Firestore Timestamp) mais peut
+// aussi arriver en string ISO (connecteur n8n) ou en millisecondes (legacy TinderForm).
+// On normalise tous ces cas en Date, sinon la durée retombe silencieusement à 1 jour.
+function parseFirestoreDate(value) {
+    if (!value) return null;
+
+    if (typeof value === 'object') {
+        // Timestamp Firestore : { _seconds } (admin) ou { seconds } (REST déballé)
+        const secs = value._seconds ?? value.seconds ?? null;
+        if (typeof secs === 'number') return new Date(secs * 1000);
+        // Timestamp REST brut : { timestampValue: "2026-07-12T08:31:00Z" }
+        if (typeof value.timestampValue === 'string') return new Date(value.timestampValue);
+        return null;
+    }
+
+    // Millisecondes (Date.now()) ou secondes epoch
+    if (typeof value === 'number') return new Date(value < 1e12 ? value * 1000 : value);
+
+    if (typeof value === 'string') {
+        const d = new Date(value);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    return null;
+}
+
+// Borne de fin d'exposition : l'instant du run, plafonné à la fin du mois analysé.
+// Le workflow tourne le dernier jour du mois, mais un re-run tardif (ou un test manuel
+// en septembre sur le rapport de juillet) ne doit pas gonfler les durées.
+const runDate = new Date();
+const currentEndDate = new Date(dates.current.end);
+const exposureEnd = runDate < currentEndDate ? runDate : currentEndDate;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// Nombre de jours calendaires d'exposition, bornes incluses :
+// créé le 28 + rapport le 31 → 4 j. Créé le jour même → 1 j.
+// Date.UTC sur les composants locaux : neutralise les décalages d'heure d'été.
+function computeDureeJours(timeCreated) {
+    const created = parseFirestoreDate(timeCreated);
+    if (!created || isNaN(created.getTime())) return 1;
+
+    const startDay = Date.UTC(created.getFullYear(), created.getMonth(), created.getDate());
+    const endDay = Date.UTC(exposureEnd.getFullYear(), exposureEnd.getMonth(), exposureEnd.getDate());
+    const diffDays = Math.round((endDay - startDay) / MS_PER_DAY) + 1;
+
+    return diffDays > 0 ? diffDays : 1;
+}
+
 // --- 3. TRAITEMENT DES WIDGETS ---
 const typeFrMap = {
     poll: "Sondage", calendar: "Calendrier", teaser: "Teaser",
     folder: "Dossier", tinder: "Tinder", quiz: "Quiz",
     testimony: "Appel à témoignage", potm: "Joueur du match",
-    prono: "Pronostic", facts: "Faits marquants"
+    prono: "Pronostic", facts: "Faits marquants",
+    natinotes: "Notes de la Nati"
 };
 
 let processedDocs = [];
@@ -170,12 +242,17 @@ currentMonthDocs.forEach(item => {
     const engagement = calculateEngagement(doc);
     totalIntActuel += engagement;
 
+    const created = parseFirestoreDate(doc.meta?.timeCreated);
+
     processedDocs.push({
         titre: doc.meta?.title || "Widget sans titre",
         type: typeFrMap[doc.type] || doc.type || "Inconnu",
         theme: doc.meta?.theme || doc.theme || "Non catégorisé",
         engagement: engagement,
-        dureeJours: 1 
+        dureeJours: computeDureeJours(doc.meta?.timeCreated),
+        // Exposé pour contrôle : si dureeJours retombe à 1 partout, vérifier ce champ
+        // dans la sortie du nœud (null = format de timeCreated non reconnu).
+        dateCreation: created ? created.toISOString() : null
     });
 });
 
