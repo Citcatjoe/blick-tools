@@ -69,7 +69,7 @@ C'est le bac à sable métier. Ce bloc contiendra **toutes les autres données s
 Lorsque vous ajoutez un nouveau widget dans l'application **Backend**, l'interface de gestion (`Form.jsx`) agit comme un "Adaptateur" :
 
 1. **Chargement (`getLegacyEmbed`)** : S'occupe de transformer le modèle à 4 blocs vers un modèle "à plat" traditionnel (pour le formulaire React).
-2. **Sauvegarde Initiale (`transformWidgetData`)** : Re-package les données du formulaire dans la stricte architecture à 4 blocs (`meta`, `stats`, `data`) juste avant l'envoi à Firestore.
+2. **Sauvegarde Initiale (`transformWidgetData`)** : Re-package les données du formulaire dans la stricte architecture à 4 blocs (`meta`, `stats`, `data`) juste avant l'envoi à Firestore. Cette fonction vit dans `packages/widget-model/transform.js` (`@rms/widget-model`), partagée avec l'API serveur (`apps/api`) : c'est là qu'on ajoute le `case` du nouveau type, avec le sentinel `serverTimestamp` injecté par l'appelant. Idem pour la validation métier, qui a vocation à y migrer type par type (`validatePoll` en est le modèle).
 3. **Mise à jour (Transactions) 🚨 IMPORTANT** : 
    - Pour l'édition de widgets contenant des compteurs alimentés par les utilisateurs (Sondages, Joueurs du match, Dossiers), vous **devez** utiliser `runTransaction` lors de la sauvegarde (`handleSave`).
    - La transaction doit lire les compteurs existants depuis Firestore (`currentData.stats`) et les fusionner avec la mise à jour, pour être enregistrés **uniquement dans `finalWidgetData.stats`**.

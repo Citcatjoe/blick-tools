@@ -34,6 +34,9 @@
     "dev:tinder": "npm run dev -w apps/tinder",
     "build:tinder": "npm run build -w apps/tinder",
     "dev:backend": "npm run dev -w apps/backend",
-    "build:backend": "npm run build -w apps/backend"
+    "build:backend": "npm run build -w apps/backend",
+    "dev:api": "npm run dev -w apps/api",
+    "test:api": "npm test -w apps/api",
+    "test:widget-model": "npm test -w packages/widget-model"
   }
 }

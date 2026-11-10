@@ -67,7 +67,7 @@
 - **Items dynamiques** : `<oui/non>` — si oui, **générer et conserver un `id`** par item ajouté.
 - **Adaptateur** :
   - `getLegacyEmbed` : 4 blocs → modèle plat pour le form.
-  - `transformWidgetData` : form → 4 blocs avant envoi Firestore.
+  - `transformWidgetData` (`packages/widget-model/transform.js`, partagé avec `apps/api`) : form → 4 blocs avant envoi Firestore. Ajouter le `case` du type là, pas dans `Form.jsx`.
 - **Sauvegarde** : si compteurs alimentés par users → `runTransaction` qui **relit `stats` existants et les merge** (ne jamais réinjecter les compteurs dans `data`).
 - **Intégration dashboard** : icône `<icon-….svg>` + entrée dans le menu « nouveau ».
 

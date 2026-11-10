@@ -11,12 +11,12 @@ Monorepo **npm workspaces** regroupant les widgets « clients » de Blick (sonda
 Tout se lance depuis la racine (les dépendances et les liens de packages locaux sont gérés par les workspaces) :
 
 ```bash
-npm install                 # à la racine — installe tout et lie @rms/ui, @rms/services
+npm install                 # à la racine — installe tout et lie @rms/ui, @rms/services, @rms/widget-model
 npm run dev:<app>           # dev server Vite (ex: dev:poll, dev:backend, dev:quiz)
 npm run build:<app>         # build de production → apps/<app>/dist
 ```
 
-Apps disponibles : `poll`, `calendar`, `folder`, `teaser`, `facts`, `potm`, `prono`, `quiz`, `testimony`, `tinder`, `backend`, plus `docs` et `utils`.
+Apps disponibles : `poll`, `calendar`, `folder`, `teaser`, `facts`, `potm`, `prono`, `quiz`, `testimony`, `tinder`, `backend`, plus `docs` et `utils`. Service serveur : `api` (`npm run dev:api`, pas de build Vite).
 
 Lint (par app, pas de script agrégé à la racine) :
 
@@ -24,20 +24,32 @@ Lint (par app, pas de script agrégé à la racine) :
 npm run lint -w apps/<app>   # eslint . — présent dans toutes les apps sauf `docs`
 ```
 
-Il n'y a **pas de suite de tests** dans ce dépôt (aucun script `test` dans aucune app).
+Tests (`node --test`, pas de framework) uniquement sur le code partagé et le serveur :
+
+```bash
+npm run test:widget-model    # validation / documents 4 blocs / URL d'embed
+npm run test:api             # contrat HTTP de l'API (store en mémoire, client OIDC factice)
+```
+
+Les apps Vite n'ont pas de suite de tests.
 
 ## Structure du dépôt
 
 - `packages/services` (`@rms/services`) — code partagé Firebase / API / analytics. Point d'entrée `index.js` ré-exporte `firebase.js`, `api.js`, `analytics.js`. **La plupart des accès Firestore passent par ici.**
 - `packages/ui` (`@rms/ui`) — package des **composants partagés à terme**. Le monorepo est né de la fusion de plusieurs repos séparés ; avec la multiplication des apps clientes, l'objectif est d'y **homogénéiser les composants communs** plutôt que de les recoder dans chaque nouvelle app. **État actuel : vide** — seul un placeholder `WelcomeUI` existe, aucun composant réel n'a encore été extrait, et aucune app cliente ne l'importe (les composants vivent toujours en double dans chaque app).
+- `packages/widget-model` (`@rms/widget-model`) — **la fabrique unique des documents `widgets`**, sans dépendance Firebase (utilisable navigateur et Node) : `transformWidgetData(saveData, { serverTimestamp })` (formulaire plat → 4 blocs, tous types), `validatePoll` / `buildPollSaveData` (règles `poll`), `buildEmbedUrl` (URL d'iframe). Consommée par `backend` et `api` pour qu'ils écrivent des documents identiques. Ne jamais recoder une règle ou un mapping dans un écrivain. Le type `poll` a servi de cobaye : la validation des autres types vit encore dans `Form.jsx`.
+- `.specify/` + `specs/NNN-<nom>/` — **Spec Kit** : constitution du projet (`.specify/memory/constitution.md`) et, par fonctionnalité transverse, `spec.md` → `plan.md` (+ `research.md`, `data-model.md`, `contracts/`, `quickstart.md`) → `tasks.md`. Skills `/speckit-*` dans `.claude/skills/`.
 - `legacy-redirects/` — anciens dossiers FTP `bl-tools-client-*` (cible du déploiement).
-- `n8n_workflows/` — workflows externes de reporting analytique (Slack). Pas du code applicatif.
+- `oembed/oembed.php` — endpoint **oEmbed** (spec oembed.com) commun à tous les widgets clients : reçoit `?url=<URL du widget>` et renvoie un JSON `type: "rich"` contenant l'iframe. Sert aux intégrations qui n'acceptent pas d'iframe brute (liveticker Tickaroo, Ring). Hôtes acceptés : prod et test (`ALLOWED_HOSTS`).
+- `n8n_workflows/` — workflows externes de reporting analytique (Slack). Pas du code applicatif. Leur accès à Firestore (compte de service, rôle, remplacement de clé) : `n8n_workflows/acces_firestore.md`.
 
 ### Les apps de `/apps`
 
-Toutes les apps sont des projets **Vite + React 19 indépendants**, mais elles ne jouent pas le même rôle. Bien distinguer :
+Toutes les apps sauf `api` sont des projets **Vite + React 19 indépendants**, mais elles ne jouent pas le même rôle. Bien distinguer :
 
-- **`backend`** — l'application **« mère »** : le dashboard d'administration qui permet de **créer et éditer le contenu** consommé par les apps clientes (auth Firebase, CRUD Firestore, formulaires `Form/*.jsx`, `upload.php`). C'est le seul point d'entrée d'écriture « métier » ; les widgets clients ne font que lire ce contenu et incrémenter des compteurs.
+- **`backend`** — l'application **« mère »** : le dashboard d'administration qui permet de **créer et éditer le contenu** consommé par les apps clientes (auth Firebase, CRUD Firestore, formulaires `Form/*.jsx`, `upload.php`). Avec `api` (création de sondages par le Hub Rédaction), c'est le seul point d'entrée d'écriture « métier » ; les widgets clients ne font que lire ce contenu et incrémenter des compteurs.
+
+- **`api`** — service Node (Cloud Run) d'écriture **serveur à serveur** : `POST /polls` pour le Hub Rédaction (OIDC Google + liste blanche, `Idempotency-Key`). Écrit avec un compte de service dédié (contourne les règles Firestore, borné par l'IAM). Contrat et décisions : `specs/001-poll-create-api/` ; déploiement : `apps/api/README.md`. Ne lit pas le `.env` racine.
 
 - **Apps clientes** (les widgets embarqués en iframe) : `calendar`, `facts`, `folder`, `poll`, `potm`, `prono`, `quiz`, `teaser`, `testimony`, `tinder`. Chacune rend un type de widget créé depuis le `backend`, à partir d'un document Firestore identifié par l'URL de l'iframe.
 
@@ -45,7 +57,7 @@ Toutes les apps sont des projets **Vite + React 19 indépendants**, mais elles n
 
 - **`docs`** — **vitrine des composants partagés** (type « storybook »). C'est la seule app qui importe `@rms/ui` : sidebar listant les composants + sélecteur de marque pour tester le theming. Elle a vocation à présenter les composants qui seront **extraits des apps clientes vers `packages/ui`**. Pour l'instant elle n'affiche que le placeholder `WelcomeUI` (aucun composant partagé n'existe encore). Ce n'est pas un widget client.
 
-⚠️ **Sous-dépôts git imbriqués** : les **11 apps** (les 10 clientes + `backend`) contiennent chacune leur propre `.git` — héritage des repos séparés d'avant le monorepo. Ce ne sont pas de simples dossiers : un `git add` à la racine ne les suit pas comme du code normal. **Vérifier dans quel repo on se trouve avant de committer.** Seules `docs` et `utils` sont de vrais dossiers du repo racine (pas de `.git` propre).
+⚠️ **Sous-dépôts git imbriqués** : les **11 apps** (les 10 clientes + `backend`) contiennent chacune leur propre `.git` — héritage des repos séparés d'avant le monorepo. Ce ne sont pas de simples dossiers : un `git add` à la racine ne les suit pas comme du code normal. **Vérifier dans quel repo on se trouve avant de committer.** Seules `docs`, `utils` et `api` sont de vrais dossiers du repo racine (pas de `.git` propre).
 
 ## Modèle de données Firestore (la règle d'or)
 
@@ -71,14 +83,14 @@ Règles non négociables (voir `widget_structure_guide.md` pour le détail compl
 
 La collection historique s'appelait `embeds` (structure « à plat », hétérogène) ; une migration Blue/Green l'a copiée vers `widgets` (structure à 4 blocs). Le code de `packages/services/api.js` gère **encore les deux structures** (ancienne plate et nouvelle imbriquée) — d'où les fallbacks du type `stats.tinderVotes || data.tinderVotes`. Ne pas « simplifier » ces fallbacks sans vérifier qu'aucun document ancien ne subsiste.
 
-Dans le backend (`apps/backend/src/components/Form/Form.jsx`), le pattern est un **Adaptateur** : `getLegacyEmbed` aplatit les 4 blocs pour le formulaire React, `transformWidgetData` re-package en 4 blocs avant l'envoi Firestore. Lors d'une édition, la priorité doit aller aux données du formulaire (`formData`), pas au `legacyEmbed`.
+Dans le backend (`apps/backend/src/components/Form/Form.jsx`), le pattern est un **Adaptateur** : `getLegacyEmbed` aplatit les 4 blocs pour le formulaire React, `transformWidgetData` (importé de `@rms/widget-model`, avec le `serverTimestamp` du SDK client) re-package en 4 blocs avant l'envoi Firestore. Lors d'une édition, la priorité doit aller aux données du formulaire (`formData`), pas au `legacyEmbed`. Tout nouveau mapping de champ s'ajoute dans `packages/widget-model/transform.js`, jamais dans `Form.jsx`. (`apps/utils` garde sa propre copie de migration, jetable.)
 
 ## Conventions des widgets (frontend)
 
 > Pour **créer un nouveau widget**, partir de `SPEC_TEMPLATE.md` (racine) : il structure la spec en 3 faces indissociables — modèle Firestore 4 blocs, app cliente, formulaire backend.
 
 - **Identification du widget** : chaque app cliente lit son document dans l'URL de l'iframe via le param **`?<type>Doc=<firestoreId>`** (`?pollDoc=abc`, `?quizDoc=xyz`, `?pronoDoc=…`). C'est le seul param universel — les 10 apps le respectent.
-- ⚠️ **Le param `?brand=` n'est PAS universel** : seule `poll` le lit (`urlParams.get('brand')`), pour son intégration `pme`. Ne pas confondre avec la **couleur de marque du design system** (variables CSS `--color-fill-brand`, classes `bg-brand`) qu'utilisent `facts`, `potm`, `quiz` — celle-ci vient du CSS, pas de l'URL.
+- ⚠️ **Le param `?brand=` n'est PAS universel** : seule `poll` le lit, et **pas pour le style**. Le branding visuel (`App brand-blick`/`brand-pme`) vient exclusivement de `meta.brand` dans Firestore. `&brand=pme` sert uniquement au script inline de `apps/poll/index.html`, qui active l'intégration de la page hôte PME (envoi de la hauteur via `postMessage`, écoute du message `dark-mode`, signal `iframe-ready`). Le backend l'ajoute à l'URL copiée (`ListItem.jsx`) à partir de `meta.brand`. Ne pas confondre avec la **couleur de marque du design system** (variables CSS `--color-fill-brand`, classes `bg-brand`) qu'utilisent `facts`, `potm`, `quiz` — celle-ci vient du CSS, pas de l'URL.
 - Chargement typique : `fetchWidgetData(docId, 'widgets')` → incrément de vue via `incrementCounterViews` → event analytics via `dataLayerPush*` (poussé dans `window.blickDataLayer`).
 - Anti-double-vote côté client via `localStorage` (clé `hasVoted_<docId>` etc.), désactivable par un flag `isDev` dans le composant.
 - `vite.config.js` des apps clientes et du backend utilise `base: "./"` (chemins relatifs → app agnostique au dossier de déploiement) et `envDir: '../../'` (les variables d'env sont lues à la **racine du monorepo**).
@@ -160,4 +172,4 @@ Détails :
 
 ## Déploiement
 
-Stratégie FTP « in-place » : le `dist/` de chaque widget est uploadé directement dans son ancien dossier FTP `bl-tools-client-<widget>`. Grâce à `base: "./"`, aucune redirection n'est nécessaire. Le backend inclut un `upload.php` pour l'upload d'images côté serveur.
+Stratégie FTP « in-place » : le `dist/` de chaque widget est uploadé directement dans son ancien dossier FTP `bl-tools-client-<widget>`. Grâce à `base: "./"`, aucune redirection n'est nécessaire. Le backend inclut un `upload.php` pour l'upload d'images côté serveur. `oembed/oembed.php` se dépose à côté des dossiers `bl-tools-client-*`, dans `bl-tools-oembed/` (prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-oembed/oembed.php`).

@@ -1,0 +1,21 @@
+# Fichiers envoyés par `gcloud builds submit` depuis la racine (image de apps/api) :
+# uniquement ce que l'image utilise. Tout le reste (apps front, .git, node_modules, .env…) reste
+# sur le poste. Liste blanche niveau par niveau : exclure, puis ré-inclure le strict nécessaire.
+# Vérifier après modification : gcloud meta list-files-for-upload .
+/*
+!/package.json
+!/package-lock.json
+!/apps/
+/apps/*
+!/apps/*/
+/apps/*/*
+!/apps/*/package.json
+!/apps/api/Dockerfile
+!/apps/api/Dockerfile.dockerignore
+!/apps/api/src/
+!/packages/
+/packages/*
+!/packages/*/
+/packages/*/*
+!/packages/*/package.json
+!/packages/widget-model/*.js

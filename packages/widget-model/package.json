@@ -1,0 +1,11 @@
+{
+  "name": "@rms/widget-model",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Validation et construction des documents `widgets` (4 blocs), partagées par le dashboard et l'API.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test"
+  }
+}

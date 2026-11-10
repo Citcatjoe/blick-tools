@@ -1,0 +1,335 @@
+openapi: 3.1.0
+info:
+  title: Blick Tools API
+  version: 1.0.0
+  description: |
+    API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
+
+    **Authentification** : `Authorization: Bearer <ID token Google>` émis pour le compte de
+    service de l'appelant, avec `audience` = URL du service Blick Tools API de l'environnement
+    visé. L'e-mail du compte doit figurer dans la liste blanche du service.
+
+    **Erreurs** : RFC 9457 (`application/problem+json`), voir le schéma `Problem`. Le champ
+    `code` est stable et destiné aux machines ; `title`/`detail`/`message` sont en français.
+servers:
+  - url: https://blick-tools-api-<hash>-ew.a.run.app
+    description: Une URL par environnement (test `blick-tools-app`, prod `blick-tools-app-42a99`)
+security:
+  - googleIdToken: []
+paths:
+  /polls:
+    post:
+      operationId: createPoll
+      summary: Créer un sondage
+      description: |
+        Crée un widget `poll` identique à celui que produit le dashboard pour les mêmes
+        saisies, et renvoie son id et son URL d'embed. Le sondage est actif dès la création.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Clé choisie par l'appelant (ex. UUID). Avec la même clé, la même demande renvoie le
+            sondage déjà créé (`200`) ; une demande différente renvoie `409`. Propre à chaque
+            appelant, sans expiration.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+            pattern: '^[\x21-\x7E]+$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePollRequest'
+            example:
+              question: Faut-il introduire la semaine de 4 jours en Suisse ?
+              answers: [Oui, Non, Sans opinion]
+              theme: Suisse
+              brand: blick
+              author: jane.doe@ringier.ch
+      responses:
+        '201':
+          description: Sondage créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePollResponse'
+              example:
+                id: 9f2c41d07ab35e6c1d84
+                embedUrl: https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-poll/?pollDoc=9f2c41d07ab35e6c1d84&brand=blick
+        '200':
+          description: Rejeu idempotent — le sondage existait déjà pour cette clé et ce contenu
+          headers:
+            Idempotent-Replayed:
+              schema: { type: string, enum: ['true'] }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatePollResponse'
+        '400':
+          description: |
+            `INVALID_JSON` (corps illisible), `INVALID_IDEMPOTENCY_KEY` (en-tête hors format) ou
+            `VALIDATION_FAILED` (toutes les violations dans `errors`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                status: 400
+                code: VALIDATION_FAILED
+                title: Requête invalide
+                detail: 2 champ(s) invalide(s).
+                errors:
+                  - { field: theme, code: required, message: La rubrique est obligatoire. }
+                  - { field: 'answers[1]', code: required, message: La réponse 2 est vide. }
+        '401':
+          description: '`UNAUTHENTICATED` — jeton absent, illisible, expiré ou mauvaise audience.'
+          headers:
+            WWW-Authenticate:
+              schema: { type: string, example: Bearer }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: '`FORBIDDEN` — identité valide mais hors liste blanche.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: '`IDEMPOTENCY_CONFLICT` — clé déjà utilisée pour un contenu différent.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: '`PAYLOAD_TOO_LARGE` — corps > 64 Kio.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '415':
+          description: '`UNSUPPORTED_MEDIA_TYPE` — `Content-Type` autre que `application/json`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          description: '`INTERNAL` — erreur inattendue ; rien n''est garanti sur l''écriture, rejouer avec la même clé.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: '`UNAVAILABLE` — stockage temporairement indisponible ; rejouable avec la même clé.'
+          headers:
+            Retry-After:
+              schema: { type: integer, example: 5 }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /polls/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+        description: Identifiant Firestore du sondage (`meta.id`).
+    get:
+      operationId: getPoll
+      summary: Lire un sondage
+      responses:
+        '200':
+          description: Sondage trouvé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Poll' }
+        '401':
+          description: '`UNAUTHENTICATED` — jeton absent, illisible, expiré ou mauvaise audience.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: '`FORBIDDEN` — identité valide mais hors liste blanche.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: '`NOT_FOUND` — document inexistant ou pas de type `poll`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: '`UNAVAILABLE` — stockage temporairement indisponible.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    patch:
+      operationId: updatePoll
+      summary: Corriger la question et/ou les textes des réponses
+      description: |
+        Seuls `question` et les textes de `answers` changent ; les votes (`stats.answerCounters`)
+        ne sont jamais modifiés. `answers` doit reprendre **exactement** les identifiants
+        existants, dans le même ordre. Écriture transactionnelle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PollUpdateRequest' }
+      responses:
+        '200':
+          description: Sondage après modification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Poll' }
+        '400':
+          description: '`VALIDATION_FAILED` — champ inconnu, question/réponse vide, éditeur manquant, ou identifiants de réponses différents/en nombre différent/dans un autre ordre.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401':
+          description: '`UNAUTHENTICATED`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '403':
+          description: '`FORBIDDEN` — identité valide mais hors liste blanche.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404':
+          description: '`NOT_FOUND` — document inexistant ou pas de type `poll`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '415':
+          description: '`UNSUPPORTED_MEDIA_TYPE` — `Content-Type` autre que `application/json`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: '`UNAVAILABLE` — stockage temporairement indisponible.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  securitySchemes:
+    googleIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (Google-signed OIDC ID token)
+  schemas:
+    CreatePollRequest:
+      type: object
+      additionalProperties: false
+      required: [question, answers, theme]
+      properties:
+        question:
+          type: string
+          description: Question du sondage ; rognée, non vide.
+        answers:
+          type: array
+          minItems: 2
+          description: Réponses dans l'ordre d'affichage ; chacune rognée, non vide.
+          items: { type: string }
+        theme:
+          type: string
+          enum: [Suisse, Inter, Sport]
+          description: Rubrique (casse exacte).
+        brand:
+          type: string
+          enum: [blick, pme]
+          default: blick
+          description: Marque. `pme` active l'intégration hôte PME dans l'URL d'embed.
+        author:
+          type: string
+          format: email
+          maxLength: 254
+          description: E-mail du journaliste, affiché comme auteur dans le dashboard. Défaut « Hub Rédaction ».
+    CreatePollResponse:
+      type: object
+      required: [id, embedUrl]
+      properties:
+        id:
+          type: string
+          description: Identifiant Firestore du widget (`?pollDoc=`).
+        embedUrl:
+          type: string
+          format: uri
+          description: URL de l'iframe, identique au lien copié depuis le dashboard.
+    Poll:
+      type: object
+      required: [id, embedUrl, question, answers, totalVotes, theme, brand]
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        question: { type: string }
+        answers:
+          type: array
+          description: Réponses dans l'ordre d'affichage ; `votes` lu dans `stats.answerCounters`, 0 si absent.
+          items: { $ref: '#/components/schemas/PollAnswer' }
+        totalVotes:
+          type: integer
+          description: Somme des votes des réponses listées.
+        theme: { type: string }
+        brand: { type: string, enum: [blick, pme] }
+    PollAnswer:
+      type: object
+      required: [id, text, votes]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        votes: { type: integer }
+    PollUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [editor]
+      properties:
+        question:
+          type: string
+          description: Nouvelle question ; rognée, non vide si fournie.
+        answers:
+          type: array
+          description: Textes dans le même ordre que les réponses existantes ; `id` = identifiant existant, non modifiable.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, text]
+            properties:
+              id: { type: string }
+              text: { type: string }
+        editor:
+          type: string
+          description: E-mail du journaliste, conservé comme trace (`meta.updatedBy`).
+    Problem:
+      type: object
+      required: [status, code, title]
+      properties:
+        status: { type: integer }
+        code:
+          type: string
+          enum:
+            - INVALID_JSON
+            - INVALID_IDEMPOTENCY_KEY
+            - VALIDATION_FAILED
+            - UNAUTHENTICATED
+            - FORBIDDEN
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - IDEMPOTENCY_CONFLICT
+            - PAYLOAD_TOO_LARGE
+            - UNSUPPORTED_MEDIA_TYPE
+            - UNAVAILABLE
+            - INTERNAL
+        title: { type: string }
+        detail: { type: string }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/FieldError' }
+    FieldError:
+      type: object
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+          description: '`question`, `answers`, `answers[i]` (base 0), `theme`, `brand`, `author`, `editor`, `body` (corps non objet) ou le nom d''un champ inconnu.'
+        code:
+          type: string
+          enum: [required, invalid_type, invalid_value, too_few, unknown_field]
+        message: { type: string }
