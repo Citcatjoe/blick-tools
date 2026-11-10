@@ -131,18 +131,30 @@ Corps :
 ```json
 {
   "question": "Question corrigée ?",
-  "answers": [ { "id": "27de539a-…", "text": "Oui, plutôt" }, { "id": "85ccf997-…", "text": "Non" } ],
+  "theme": "Suisse",
+  "brand": "pme",
+  "answers": [
+    { "id": "27de539a-…", "text": "Oui, plutôt" },
+    { "text": "Peut-être" },
+    { "id": "85ccf997-…", "text": "Non" }
+  ],
   "editor": "jane.doe@ringier.ch"
 }
 ```
 
-- `question` et `answers` sont optionnels ; `editor` est obligatoire (e-mail du journaliste,
-  conservé comme trace dans `meta.updatedBy`, avec `meta.updatedAt`).
-- `answers` : **exactement** les identifiants existants, dans le même ordre. Seul le texte
-  change. Les votes ne bougent jamais : pas d'ajout, pas de retrait, pas de changement d'id.
-  Tout écart → `400 VALIDATION_FAILED` (`field` = `answers` ou `answers[i]`, base 0).
-- `200` : même forme que `GET` (état après modification). `404` si introuvable.
-- Écriture transactionnelle : un vote en cours n'est jamais écrasé.
+- Tout est optionnel sauf `editor` (e-mail du journaliste, conservé dans `meta.updatedBy`, avec
+  `meta.updatedAt`).
+- `theme` et `brand` : même validation que `POST` (listes `Suisse`/`Inter`/`Sport` et
+  `blick`/`pme`). Changer `brand` change l'`embedUrl` renvoyée (`…&brand=…`) : le Hub met à jour
+  l'Embeddable Ring et la republie.
+- `answers` est la **liste voulue complète** :
+  - `{ id, text }` : réponse existante (texte modifié) — id inconnu → `400` (`answers[i]`) ;
+  - `{ text }` sans `id` : nouvelle réponse, id généré par l'API, 0 vote ;
+  - réponse absente : **retirée, ses votes sont perdus** (comme dans le dashboard).
+  - Réordonner les `{ id, text }` réordonne les réponses : les votes suivent l'id.
+- Compteurs recalculés par id dans la transaction (`1 lecture + 1 écriture`) : un vote en cours
+  n'est jamais écrasé.
+- `200` : même forme que `GET` (état après modification, `totalVotes` à jour). `404` si introuvable.
 
 ## Hors périmètre de l'API
 

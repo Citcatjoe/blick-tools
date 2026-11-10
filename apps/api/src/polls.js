@@ -111,7 +111,7 @@ export async function createPoll({ input, author, caller, idempotencyKey }, { st
   });
 }
 
-const PATCH_FIELDS = new Set(['question', 'answers', 'editor']);
+const PATCH_FIELDS = new Set(['question', 'answers', 'theme', 'brand', 'editor']);
 
 /**
  * Corps d'un `PATCH /polls/{id}` → champs fournis, déjà typés et rognés. Toutes les violations
@@ -127,8 +127,8 @@ export function parsePollPatch(body) {
     .filter((field) => !PATCH_FIELDS.has(field))
     .map((field) => ({ field, code: 'unknown_field', message: `Champ inconnu : ${field}.` }));
 
-  const { question, answers, editor } = body;
-  errors.push(...validatePollEdits({ question, answers }));
+  const { question, answers, theme, brand, editor } = body;
+  errors.push(...validatePollEdits({ question, answers, theme, brand }));
 
   if (editor === undefined || editor === null) {
     errors.push({ field: 'editor', code: 'required', message: "L'éditeur est obligatoire." });
@@ -141,6 +141,8 @@ export function parsePollPatch(body) {
   if (errors.length > 0) throw validationFailed(errors);
   return {
     question: typeof question === 'string' ? question.trim() : undefined,
+    theme: theme === undefined || theme === null ? undefined : theme,
+    brand: brand === undefined || brand === null ? undefined : brand,
     answers: Array.isArray(answers) ? answers.map((answer) => ({ id: answer.id, text: answer.text.trim() })) : undefined,
     editor: editor.trim(),
   };
@@ -173,53 +175,62 @@ export async function getPoll({ id }, { store, clientBaseUrl }) {
 }
 
 /**
- * Corrige la question et/ou les textes des réponses, sans jamais toucher aux votes. La
- * transaction relit le document au moment d'écrire : les ids de réponses sont comparés à ceux
- * stockés (même nombre, même ordre), et seuls `data.question`, `data.answerTxts`, `meta.updatedBy`
- * et `meta.updatedAt` sont écrits.
+ * Corrige un sondage comme le dashboard : `question`, `theme`, `brand` et la liste complète des
+ * `answers` peuvent changer. Une réponse `{ id, text }` modifie l'existante (id inconnu → 400),
+ * `{ text }` sans id en ajoute une (id généré), une réponse absente est retirée. Les compteurs
+ * sont recalculés par id dans la même transaction (1 lecture + 1 écriture) : votes conservés
+ * pour les réponses gardées, 0 pour les nouvelles, perdus pour les retirées.
  */
 export async function updatePoll({ id, body }, { store, clientBaseUrl }) {
-  const { question, answers, editor } = parsePollPatch(body);
+  const { question, answers, theme, brand, editor } = parsePollPatch(body);
 
   const result = await store.update(id, (current) => {
     if (!current || current.type !== 'poll') throw new ApiError(404, 'NOT_FOUND', 'Sondage introuvable');
 
-    const storedAnswers = current.data?.answerTxts ?? [];
+    const storedIds = new Set((current.data?.answerTxts ?? []).map((answer) => answer.id));
     const errors = [];
-    let nextAnswerTxts = storedAnswers;
+    const seen = new Set();
 
-    if (answers !== undefined) {
-      if (answers.length !== storedAnswers.length) {
-        errors.push({
-          field: 'answers',
-          code: 'invalid_value',
-          message: `Le nombre de réponses (${answers.length}) ne correspond pas au sondage (${storedAnswers.length}).`,
-        });
-      } else {
-        answers.forEach((answer, index) => {
-          if (answer.id !== storedAnswers[index]?.id) {
-            errors.push({
-              field: `answers[${index}]`,
-              code: 'invalid_value',
-              message: `La réponse ${index + 1} ne correspond pas à la réponse du sondage (identifiant différent).`,
-            });
+    const nextAnswerTxts = answers === undefined
+      ? current.data?.answerTxts ?? []
+      : answers.map((answer, index) => {
+          if (answer.id !== undefined && answer.id !== null) {
+            if (seen.has(answer.id)) {
+              errors.push({ field: `answers[${index}]`, code: 'invalid_value', message: `La réponse ${index + 1} répète un identifiant.` });
+              return answer;
+            }
+            seen.add(answer.id);
+            if (!storedIds.has(answer.id)) {
+              errors.push({ field: `answers[${index}]`, code: 'invalid_value', message: `La réponse ${index + 1} porte un identifiant inconnu.` });
+              return answer;
+            }
+            return { id: answer.id, text: answer.text };
           }
+          return { id: randomUUID(), text: answer.text };
         });
-        if (errors.length === 0) nextAnswerTxts = answers.map((answer) => ({ id: answer.id, text: answer.text }));
-      }
-    }
     if (errors.length > 0) throw validationFailed(errors);
+
+    const nextQuestion = question ?? current.data?.question ?? '';
+    const nextTheme = theme ?? current.meta?.theme ?? '';
+    const nextBrand = brand ?? current.meta?.brand ?? '';
+    const nextCounters = Object.fromEntries(nextAnswerTxts.map(({ id }) => [id, current.stats?.answerCounters?.[id] || 0]));
 
     const patch = {
       'meta.updatedBy': editor,
       'meta.updatedAt': store.serverTimestamp(),
+      'data.question': nextQuestion,
+      'data.answerTxts': nextAnswerTxts,
+      'stats.answerCounters': nextCounters,
+      'meta.title': nextQuestion,
     };
-    if (question !== undefined) patch['data.question'] = question;
-    if (answers !== undefined) patch['data.answerTxts'] = nextAnswerTxts;
+    if (theme !== undefined) patch['meta.theme'] = nextTheme;
+    if (brand !== undefined) patch['meta.brand'] = nextBrand;
 
     const next = {
       ...current,
-      data: { ...current.data, question: question ?? current.data?.question, answerTxts: nextAnswerTxts },
+      meta: { ...current.meta, theme: nextTheme, brand: nextBrand, title: nextQuestion },
+      data: { ...current.data, question: nextQuestion, answerTxts: nextAnswerTxts },
+      stats: { ...current.stats, answerCounters: nextCounters },
     };
     return { patch, next };
   });
