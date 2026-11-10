@@ -162,14 +162,13 @@ paths:
               schema: { $ref: '#/components/schemas/Problem' }
     patch:
       operationId: updatePoll
-      summary: Corriger un sondage (question, rubrique, marque, réponses)
+      summary: Corriger la question et/ou les textes des réponses
       description: |
-        `question`, `theme`, `brand` et la liste complète des `answers` peuvent changer, comme
-        dans le dashboard. `answers` est la liste voulue : `{ id, text }` modifie une réponse
-        existante (id inconnu → `400`), `{ text }` sans id en ajoute une (id généré), une réponse
-        absente est retirée. Compteurs recalculés par id dans la transaction (1 lecture +
-        1 écriture) : votes conservés pour les réponses gardées, 0 pour les nouvelles, perdus pour
-        les retirées. `embedUrl` reflète la nouvelle `brand`.
+        Correction limitée : seuls `question` et les textes de `answers` changent ; les votes
+        (`stats.answerCounters`) ne sont jamais écrits. `answers` doit reprendre **exactement** les
+        identifiants existants, dans le même ordre (pas d'ajout, de retrait ni de
+        réordonnancement). Rubrique et marque se corrigent dans le dashboard. Écriture
+        transactionnelle (1 lecture + 1 écriture).
       requestBody:
         required: true
         content:
@@ -182,7 +181,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Poll' }
         '400':
-          description: '`VALIDATION_FAILED` — champ inconnu, question/réponse vide, éditeur manquant, rubrique/marque hors liste, id de réponse inconnu ou répété, moins de 2 réponses.'
+          description: '`VALIDATION_FAILED` — champ inconnu, question/réponse vide, éditeur manquant, ou identifiants de réponses différents/en nombre différent/dans un autre ordre.'
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -287,25 +286,13 @@ components:
         question:
           type: string
           description: Nouvelle question ; rognée, non vide si fournie.
-        theme:
-          type: string
-          enum: [Suisse, Inter, Sport]
-          description: Rubrique (casse exacte), si fournie.
-        brand:
-          type: string
-          enum: [blick, pme]
-          description: Marque, si fournie. Change l'`embedUrl` renvoyée.
         answers:
           type: array
-          minItems: 2
-          description: |
-            Liste voulue, dans l'ordre d'affichage. `{ id, text }` = réponse existante (id
-            inconnu → `400`) ; `{ text }` sans id = nouvelle réponse ; réponse absente = retirée
-            (votes perdus).
+          description: Textes dans le même ordre que les réponses existantes ; `id` = identifiant existant, non modifiable.
           items:
             type: object
             additionalProperties: false
-            required: [text]
+            required: [id, text]
             properties:
               id: { type: string }
               text: { type: string }

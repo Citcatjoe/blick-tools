@@ -99,16 +99,12 @@ bouton « copier » du dashboard.
 
 ## 6. Correction (`PATCH /polls/{id}`)
 
-Correction complète, comme le dashboard : `question`, `theme`, `brand` et la liste complète des
-`answers`. `answers` est la liste voulue — `{ id, text }` modifie l'existante (id inconnu →
-`400`), `{ text }` sans id en ajoute une (id généré), une réponse absente est retirée.
-
-Écrit dans la transaction (1 lecture + 1 écriture) : `data.question`, `data.answerTxts`,
-`meta.theme`/`meta.brand` (si fournis), `meta.title`, `meta.updatedBy = editor`,
-`meta.updatedAt = serverTimestamp()`, et `stats.answerCounters` recalculé par id
-(`answerCounters[id]` conservé pour les réponses gardées, `0` pour les nouvelles, clé retirée
-pour les réponses supprimées). La transaction relit les compteurs au moment d'écrire : un vote en
-cours n'est pas écrasé.
+Correction limitée : seuls `data.question` (si fournie) et `data.answerTxts` (si `answers`
+fourni) changent, plus `meta.updatedBy = editor` et `meta.updatedAt = serverTimestamp()`. Les ids
+de `answers` doivent être exactement ceux stockés, dans le même ordre (pas d'ajout, de retrait ni
+de réordonnancement) : `stats.answerCounters` n'est **jamais** écrit — aucune perte de votes
+possible par l'API. Rubrique et marque se corrigent dans le dashboard. Transaction
+lecture-écriture (1 lecture + 1 écriture), un vote en cours n'est pas écrasé.
 
 ## 7. Cycle de vie
 

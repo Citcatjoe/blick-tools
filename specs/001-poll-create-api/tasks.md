@@ -86,6 +86,12 @@ serveur (comportements observables : documents produits, codes HTTP).
 - [X] T029 Tests : votes renvoyés, textes seuls changés, refus ids différents/nombre/ordre, 404, 403, 400 groupé
 - [X] T030 Contrat (`contracts/openapi.yaml` GET+PATCH, schémas `Poll`/`PollUpdateRequest`), `integration-hub.md` (lire/corriger + Côté Hub), `data-model.md` §5-7
 
+## Phase 8: Ouverture en édition par lien + retour au PATCH textes seuls (2026-11-10)
+
+- [X] T031 Dashboard `apps/backend/src/App.jsx` : `?edit=<id>` → après connexion + liste chargée, ouvrir le widget (`handleEditEmbed`) et retirer le paramètre (`history.replaceState`) ; id introuvable → message « Widget introuvable »
+- [X] T032 Revert du PATCH vers 233753e : `question`/`answers[{id,text}]` seuls, ids strictement identiques (nombre + ordre), `theme`/`brand` refusés, `stats` jamais écrit (aucune perte de votes)
+- [X] T033 Docs : `integration-hub.md` (portée par format, lien `?edit=<id>`, contrat à ne pas casser), `openapi.yaml` + `data-model.md` §6 reverts
+
 ## Dependencies & Execution Order
 
 - Setup → Foundational → (US4 ∥ US1/US2) → US3 → Polish.

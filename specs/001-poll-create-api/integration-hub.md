@@ -131,30 +131,34 @@ Corps :
 ```json
 {
   "question": "Question corrigée ?",
-  "theme": "Suisse",
-  "brand": "pme",
-  "answers": [
-    { "id": "27de539a-…", "text": "Oui, plutôt" },
-    { "text": "Peut-être" },
-    { "id": "85ccf997-…", "text": "Non" }
-  ],
+  "answers": [ { "id": "27de539a-…", "text": "Oui, plutôt" }, { "id": "85ccf997-…", "text": "Non" } ],
   "editor": "jane.doe@ringier.ch"
 }
 ```
 
-- Tout est optionnel sauf `editor` (e-mail du journaliste, conservé dans `meta.updatedBy`, avec
-  `meta.updatedAt`).
-- `theme` et `brand` : même validation que `POST` (listes `Suisse`/`Inter`/`Sport` et
-  `blick`/`pme`). Changer `brand` change l'`embedUrl` renvoyée (`…&brand=…`) : le Hub met à jour
-  l'Embeddable Ring et la republie.
-- `answers` est la **liste voulue complète** :
-  - `{ id, text }` : réponse existante (texte modifié) — id inconnu → `400` (`answers[i]`) ;
-  - `{ text }` sans `id` : nouvelle réponse, id généré par l'API, 0 vote ;
-  - réponse absente : **retirée, ses votes sont perdus** (comme dans le dashboard).
-  - Réordonner les `{ id, text }` réordonne les réponses : les votes suivent l'id.
-- Compteurs recalculés par id dans la transaction (`1 lecture + 1 écriture`) : un vote en cours
-  n'est jamais écrasé.
-- `200` : même forme que `GET` (état après modification, `totalVotes` à jour). `404` si introuvable.
+- `question` et `answers` sont optionnels ; `editor` est obligatoire (e-mail du journaliste,
+  conservé dans `meta.updatedBy`, avec `meta.updatedAt`).
+- `answers` : **exactement** les identifiants existants, dans le même ordre. Seul le texte
+  change. Pas d'ajout, de retrait ni de réordonnancement : tout écart → `400 VALIDATION_FAILED`
+  (`field` = `answers` ou `answers[i]`, base 0). Rubrique et marque se corrigent dans le dashboard.
+- Les votes ne sont jamais écrits par le PATCH (aucune perte de votes possible).
+- `200` : même forme que `GET` (état après modification). `404` si introuvable.
+- Écriture transactionnelle (1 lecture + 1 écriture).
+
+## Portée du Hub par format
+
+Le Hub prépare l'intégration d'un Blick Tools dans l'article Ring et assure les corrections
+courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edit=<id>`.
+
+| Format | Création Hub | Correction Hub | Détail (dashboard) |
+|---|---|---|---|
+| **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
+| **Tous les autres** (`calendar`, `teaser`, `folder`, `tinder`, `quiz`, `testimony`, `potm`, `prono`, `facts`, `natinotes`) | non | non | détectés dans l'article, édition dans le dashboard (`?edit=<id>`) |
+
+Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools-client-*` :
+
+- test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/backend/?edit=<id>`
+- prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-backend/?edit=<id>`
 
 ## Hors périmètre de l'API
 
@@ -189,6 +193,11 @@ Points de liaison entre les deux dépôts :
   `hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com` (audience = URL de l'API).
 - **Correspondance des environnements** : Ring **stage** ↔ base de **test** Blick Tools ; Ring
   **prod** ↔ **prod** (variable `BLICK_TOOLS_API_URL_PROD` du Hub encore vide : pas branché).
-- **La forme de l'`embedUrl` est un contrat** : `…/bl-tools-client-<type>/?<type>Doc=<id>&brand=…`.
-  L'extension en tire le type et l'id pour détecter un Blick Tools déjà présent dans un article.
-  **Ne pas en changer la forme sans prévenir le Hub** : cela casserait la détection.
+
+**Contrat à ne pas casser sans prévenir le Hub** (l'extension s'appuie dessus) :
+
+- la forme de l'`embedUrl` : `…/bl-tools-client-<type>/?<type>Doc=<id>&brand=…` (détection des
+  Blick Tools déjà présents dans un article) ;
+- l'emplacement du dashboard à côté des widgets : `backend/` en test, `bl-tools-backend/` en prod ;
+- le paramètre `?edit=<id>` pour ouvrir un widget en édition ;
+- les libellés de `apps/backend/src/data/widgetTypes.js` (repris dans le Hub).

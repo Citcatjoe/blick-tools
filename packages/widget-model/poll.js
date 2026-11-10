@@ -59,15 +59,14 @@ export function validatePoll({ theme, question, answers, brand } = {}) {
 }
 
 /**
- * Règles d'une édition partielle : `question`, `theme`, `brand` et/ou `answers` fournis
- * optionnellement. Ne vérifie que la forme et le contenu fournis ; la correspondance des ids
- * avec le document existant est du ressort de l'écrivain, seul à connaître les ids stockés.
+ * Règles d'une édition partielle : `question` et/ou `answers` fournies optionnellement. Ne
+ * vérifie que la forme et le contenu fournis ; la correspondance des ids avec le document
+ * existant est du ressort de l'écrivain, seul à connaître les ids stockés.
  *
- * @param {{ question?: unknown, answers?: unknown, theme?: unknown, brand?: unknown }} input
- *   `answers` : `[{ id?, text }]` — `id` absent = nouvelle réponse (id généré par l'écrivain).
+ * @param {{ question?: unknown, answers?: unknown }} input `answers` : `[{ id, text }]`
  * @returns {{ field: string, code: string, message: string }[]}
  */
-export function validatePollEdits({ question, answers, theme, brand } = {}) {
+export function validatePollEdits({ question, answers } = {}) {
   const errors = [];
   const fail = (field, code, message) => errors.push({ field, code, message });
 
@@ -79,32 +78,17 @@ export function validatePollEdits({ question, answers, theme, brand } = {}) {
     }
   }
 
-  if (theme !== undefined && theme !== null) {
-    if (!POLL_THEMES.includes(theme)) {
-      fail('theme', 'invalid_value', `Rubrique inconnue (valeurs admises : ${POLL_THEMES.join(', ')}).`);
-    }
-  }
-
-  if (brand !== undefined && brand !== null) {
-    if (!POLL_BRANDS.includes(brand)) {
-      fail('brand', 'invalid_value', `Marque inconnue (valeurs admises : ${POLL_BRANDS.join(', ')}).`);
-    }
-  }
-
   if (answers !== undefined && answers !== null) {
     if (!Array.isArray(answers)) {
       fail('answers', 'invalid_type', 'Les réponses doivent être une liste.');
     } else {
-      if (answers.length < 2) {
-        fail('answers', 'too_few', 'Au moins 2 réponses sont nécessaires.');
-      }
       answers.forEach((answer, index) => {
         if (!answer || typeof answer !== 'object' || Array.isArray(answer)) {
-          fail(`answers[${index}]`, 'invalid_type', `La réponse ${index + 1} doit être un objet { id?, text }.`);
+          fail(`answers[${index}]`, 'invalid_type', `La réponse ${index + 1} doit être un objet { id, text }.`);
           return;
         }
-        if (answer.id !== undefined && answer.id !== null && (typeof answer.id !== 'string' || answer.id === '')) {
-          fail(`answers[${index}]`, 'invalid_value', `La réponse ${index + 1} porte un identifiant invalide.`);
+        if (typeof answer.id !== 'string' || answer.id === '') {
+          fail(`answers[${index}]`, 'invalid_value', `La réponse ${index + 1} doit porter l'identifiant existant.`);
         }
         if (typeof answer.text !== 'string') {
           fail(`answers[${index}]`, 'invalid_type', `La réponse ${index + 1} doit être une chaîne de caractères.`);

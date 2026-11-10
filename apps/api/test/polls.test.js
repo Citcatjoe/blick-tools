@@ -304,75 +304,35 @@ test('PATCH ne change que les textes et garde les votes', async () => {
   assert.equal(doc.meta.updatedBy, 'jane.doe@ringier.ch');
 });
 
-test('PATCH : ajout (nouvel id, 0 vote)', async () => {
-  seedPoll({ votes: { a: 3, b: 5 } });
-  const res = await patch('/polls/poll1', {
-    editor: 'jane@ringier.ch',
-    answers: [{ id: 'a', text: 'Oui' }, { text: 'Peut-être' }, { id: 'b', text: 'Non' }],
-  });
-  assert.equal(res.status, 200);
-  assert.equal(res.json.totalVotes, 8);
-  const added = res.json.answers.find((answer) => answer.text === 'Peut-être');
-  assert.ok(added.id, 'la nouvelle réponse reçoit un id');
-  assert.notEqual(added.id, 'a');
-  assert.notEqual(added.id, 'b');
-  assert.equal(added.votes, 0);
-  assert.deepEqual(docs.get('poll1').stats.answerCounters, { a: 3, [added.id]: 0, b: 5 });
-});
-
-test('PATCH : retrait (votes retirés du total)', async () => {
-  seedPoll({ answers: [{ id: 'a', text: 'Oui' }, { id: 'b', text: 'Non' }, { id: 'c', text: 'Peut-être' }], votes: { a: 3, b: 5, c: 2 } });
-  const res = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'a', text: 'Oui' }, { id: 'b', text: 'Non' }] });
-  assert.equal(res.status, 200);
-  assert.equal(res.json.totalVotes, 8);
-  assert.deepEqual(res.json.answers.map((a) => a.id), ['a', 'b']);
-  assert.deepEqual(docs.get('poll1').stats.answerCounters, { a: 3, b: 5 });
-});
-
-test('PATCH : réordonnancement (votes suivent l\'id)', async () => {
-  seedPoll({ answers: [{ id: 'a', text: 'Oui' }, { id: 'b', text: 'Non' }, { id: 'c', text: 'Peut-être' }], votes: { a: 3, b: 5, c: 2 } });
-  const res = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'c', text: 'Peut-être' }, { id: 'a', text: 'Oui' }, { id: 'b', text: 'Non' }] });
-  assert.equal(res.status, 200);
-  assert.deepEqual(res.json.answers, [
-    { id: 'c', text: 'Peut-être', votes: 2 },
-    { id: 'a', text: 'Oui', votes: 3 },
-    { id: 'b', text: 'Non', votes: 5 },
-  ]);
-  assert.equal(res.json.totalVotes, 10);
-});
-
-test('PATCH : id inconnu refusé', async () => {
+test('PATCH refuse des ids différents, en nombre différent ou réordonnés', async () => {
   seedPoll();
-  const res = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'a', text: 'Oui' }, { id: 'ZZZ', text: 'Non' }] });
-  assert.equal(res.status, 400);
-  assert.deepEqual(res.json.errors.map(({ field, code }) => [field, code]), [['answers[1]', 'invalid_value']]);
+  const reorder = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'b', text: 'Non' }, { id: 'a', text: 'Oui' }] });
+  assert.equal(reorder.status, 400);
+  assert.deepEqual(reorder.json.errors.map(({ field, code }) => [field, code]), [
+    ['answers[0]', 'invalid_value'],
+    ['answers[1]', 'invalid_value'],
+  ]);
+
+  const fewer = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'a', text: 'Oui' }] });
+  assert.equal(fewer.status, 400);
+  assert.deepEqual(fewer.json.errors.map(({ field, code }) => [field, code]), [['answers', 'invalid_value']]);
+
+  const differentId = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'a', text: 'Oui' }, { id: 'X', text: 'Non' }] });
+  assert.equal(differentId.status, 400);
+  assert.deepEqual(differentId.json.errors.map(({ field }) => [field]), [['answers[1]']]);
+
+  // rien n'a bougé
   assert.deepEqual(docs.get('poll1').data.answerTxts, [{ id: 'a', text: 'Oui' }, { id: 'b', text: 'Non' }]);
 });
 
-test('PATCH : une seule réponse refusée', async () => {
+test('PATCH : theme et brand sont des champs inconnus (surface réduite)', async () => {
   seedPoll();
-  const res = await patch('/polls/poll1', { editor: 'jane@ringier.ch', answers: [{ id: 'a', text: 'Oui' }] });
+  const res = await patch('/polls/poll1', { editor: 'jane@ringier.ch', theme: 'Suisse', brand: 'pme', question: 'Q ?' });
   assert.equal(res.status, 400);
-  assert.deepEqual(res.json.errors.map(({ field, code }) => [field, code]), [['answers', 'too_few']]);
-});
-
-test('PATCH : theme et brand invalides refusés', async () => {
-  seedPoll();
-  const theme = await patch('/polls/poll1', { editor: 'jane@ringier.ch', theme: 'sport' });
-  assert.equal(theme.status, 400);
-  assert.deepEqual(theme.json.errors.map(({ field, code }) => [field, code]), [['theme', 'invalid_value']]);
-  const brand = await patch('/polls/poll1', { editor: 'jane@ringier.ch', brand: 'letemps' });
-  assert.equal(brand.status, 400);
-  assert.deepEqual(brand.json.errors.map(({ field, code }) => [field, code]), [['brand', 'invalid_value']]);
-});
-
-test('PATCH : brand → nouvel embedUrl', async () => {
-  seedPoll();
-  const res = await patch('/polls/poll1', { editor: 'jane@ringier.ch', brand: 'pme' });
-  assert.equal(res.status, 200);
-  assert.equal(res.json.brand, 'pme');
-  assert.equal(res.json.embedUrl, `${BASE}poll/?pollDoc=poll1&brand=pme`);
-  assert.equal(docs.get('poll1').meta.brand, 'pme');
+  assert.deepEqual(res.json.errors.map(({ field, code }) => [field, code]), [
+    ['theme', 'unknown_field'],
+    ['brand', 'unknown_field'],
+  ]);
 });
 
 test('GET/PATCH sur un id inconnu ou non-poll → 404', async () => {
