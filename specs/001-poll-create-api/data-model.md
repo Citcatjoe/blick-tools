@@ -99,10 +99,11 @@ bouton « copier » du dashboard.
 
 ## 6. Correction (`PATCH /polls/{id}`)
 
-Correction limitée : seuls `data.question` (si fournie) et `data.answerTxts` (si `answers`
-fourni) changent, plus `meta.updatedBy = editor` et `meta.updatedAt = serverTimestamp()`. Les ids
-de `answers` doivent être exactement ceux stockés, dans le même ordre (pas d'ajout, de retrait ni
-de réordonnancement) : `stats.answerCounters` n'est **jamais** écrit — aucune perte de votes
+Correction limitée : seuls `data.question` (et `meta.title`, qui le reflète dans la liste du
+dashboard, si fournie) et `data.answerTxts` (si `answers` fourni) changent, plus
+`meta.updatedBy = editor` et `meta.updatedAt = serverTimestamp()`. Les ids de `answers` doivent
+être exactement ceux stockés, dans le même ordre (pas d'ajout, de retrait ni de
+réordonnancement) : `stats.answerCounters` n'est **jamais** écrit — aucune perte de votes
 possible par l'API. Rubrique et marque se corrigent dans le dashboard. Transaction
 lecture-écriture (1 lecture + 1 écriture), un vote en cours n'est pas écrasé.
 

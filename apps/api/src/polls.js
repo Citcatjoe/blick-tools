@@ -176,8 +176,8 @@ export async function getPoll({ id }, { store, clientBaseUrl }) {
  * Corrige uniquement la question et/ou les textes des réponses, sans jamais toucher aux votes.
  * La transaction relit le document au moment d'écrire : les ids de `answers` sont comparés à ceux
  * stockés (même nombre, même ordre — pas d'ajout, retrait ni réordonnancement), et seuls
- * `data.question`, `data.answerTxts`, `meta.updatedBy` et `meta.updatedAt` sont écrits. Rubrique
- * et marque se corrigent dans le dashboard.
+ * `data.question` (+ `meta.title`), `data.answerTxts`, `meta.updatedBy` et `meta.updatedAt` sont
+ * écrits. Rubrique et marque se corrigent dans le dashboard.
  */
 export async function updatePoll({ id, body }, { store, clientBaseUrl }) {
   const { question, answers, editor } = parsePollPatch(body);
@@ -215,7 +215,10 @@ export async function updatePoll({ id, body }, { store, clientBaseUrl }) {
       'meta.updatedBy': editor,
       'meta.updatedAt': store.serverTimestamp(),
     };
-    if (question !== undefined) patch['data.question'] = question;
+    if (question !== undefined) {
+      patch['data.question'] = question;
+      patch['meta.title'] = question; // le dashboard affiche meta.title dans sa liste
+    }
     if (answers !== undefined) patch['data.answerTxts'] = nextAnswerTxts;
 
     const next = {

@@ -300,6 +300,7 @@ test('PATCH ne change que les textes et garde les votes', async () => {
   const doc = docs.get('poll1');
   assert.deepEqual(doc.stats.answerCounters, { a: 3, b: 5 });
   assert.equal(doc.data.question, 'Nouvelle ?');
+  assert.equal(doc.meta.title, 'Nouvelle ?'); // titre de la liste dashboard
   assert.deepEqual(doc.data.answerTxts, [{ id: 'a', text: 'Oui !' }, { id: 'b', text: 'Non !' }]);
   assert.equal(doc.meta.updatedBy, 'jane.doe@ringier.ch');
 });
