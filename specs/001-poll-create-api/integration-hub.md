@@ -155,6 +155,11 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 | **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
 | **Tous les autres** (`calendar`, `teaser`, `folder`, `tinder`, `quiz`, `testimony`, `potm`, `prono`, `facts`, `natinotes`) | non | non | détectés dans l'article, édition dans le dashboard (`?edit=<id>`) |
 
+> **Publication automatique — exception confirmée** : pour le flux de création de sondage en
+> 1 clic, l'Embeddable Ring est **publié automatiquement** (décision confirmée par le
+> propriétaire du Hub Rédaction, le 2026-11-10). Tout autre Embeddable reste en publication
+> manuelle, selon la règle générale du CMS.
+
 Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools-client-*` :
 
 - test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/backend/?edit=<id>`
