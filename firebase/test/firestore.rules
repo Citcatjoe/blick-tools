@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Environnement de test (projet dédié `sidekick-test`).
+// Données jetables : full access, pour que le backend ET les apps clientes
+// (écriture anonyme des compteurs `stats`) fonctionnent sans reproduire la
+// granularité du ruleset de prod. Ne jamais déployer ce fichier en prod.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /widgets/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Catalogues de joueurs (natinotes).
+    match /teams/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

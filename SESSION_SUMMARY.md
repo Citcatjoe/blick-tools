@@ -8,7 +8,7 @@
 - **Note n8n :** Il a été rappelé que lors d'une mise à jour de structure d'un nœud (comme le renommage de `themes_count` en `themes_evolution` dans *Cuisine*), il faut impérativement réexécuter ce nœud pour mettre à jour le cache avant d'exécuter le nœud suivant (*Final report gen*), sous peine de rencontrer une erreur de type `undefined`.
 
 ## 2. Sécurité Firebase (Firestore Rules)
-*Fichier concerné : `security-rules-prod.md`*
+*Fichier concerné : `firebase/prod/firestore.rules`*
 - **Correction `isRatingStatsNumeric` :** La règle était trop stricte et exigeait que l'objet `ratingStats` possède les 11 clés (de "0" à "10") pour valider un vote. Elle a été assouplie en utilisant `stats.get(key, 0) is number`, ce qui autorise les votes sur de nouveaux widgets.
 - **Migration `ratingStats` :** Lorsqu'un ancien widget subissait un vote, le backend tentait de nettoyer l'ancien champ `ratingStats` à la racine. Cela ajoutait une clé modifiée et violait la règle `hasOnly(['stats'])`. La règle a été mise à jour pour accepter `['stats', 'ratingStats']`.
 

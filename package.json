@@ -37,6 +37,12 @@
     "build:backend": "npm run build -w apps/backend",
     "dev:api": "npm run dev -w apps/api",
     "test:api": "npm test -w apps/api",
-    "test:widget-model": "npm test -w packages/widget-model"
+    "test:widget-model": "npm test -w packages/widget-model",
+    "rules:pull:prod": "node firebase/pull-rules.mjs prod",
+    "rules:deploy:prod": "firebase deploy --only firestore:rules,storage --config firebase/firebase.prod.json --project prod",
+    "rules:deploy:test": "firebase deploy --only firestore:rules,storage --config firebase/firebase.test.json --project test"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.36.0"
   }
 }

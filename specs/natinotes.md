@@ -320,11 +320,11 @@ Convention de rédaction du catalogue : slug `prénom-nom`, minuscules, accents 
 
 ## 4. Sécurité & déploiement
 
-- **Firestore rules** : autoriser l'écriture publique sur `stats.playerRatings` (cf. `security-rules-prod.md`), au même titre que les autres compteurs alimentés par les lecteurs.
+- **Firestore rules** : autoriser l'écriture publique sur `stats.playerRatings` (cf. `firebase/prod/firestore.rules`), au même titre que les autres compteurs alimentés par les lecteurs.
   - Sans cette clause, **tous les votes sont refusés en production** : la règle anonyme fonctionne par liste blanche de clés de `stats`, une clé absente n'est pas permissive par défaut.
   - Contrainte posée : seul `stats.playerRatings` change, et **un seul joueur par écriture** — ce que produit `updatePlayerRatingTransactional`.
   - Limite assumée : les clés joueur sont dynamiques et les règles Firestore ne bouclent pas (`changedKeys()` renvoie un `Set` non indexable), donc la distribution elle-même n'est pas validée. Un lecteur déterminé peut fausser la distribution d'**un** joueur, pas en toucher un autre ni sortir de `stats`. Même niveau de garantie que `answerCounters` (poll) ou `itemVotes` (prono).
-  - ⚠️ `security-rules-prod.md` est un **reflet** de ce qui est déployé dans la console Firebase, pas la source active. Modifier le fichier ne change rien tant que les règles ne sont pas publiées côté Firebase — et l'inverse est vrai aussi.
+  - ⚠️ `firebase/prod/firestore.rules` ne change rien tant qu'il n'est pas publié (`npm run rules:deploy:prod`). Une retouche faite dans la console doit être rapatriée (`npm run rules:pull:prod`) avant tout déploiement, sinon elle est écrasée.
 - **Env** : vérifier que `.env` pointe la bonne base (`.env-test` vs `.env-prod`) avant tout build.
 - **Déploiement** : dossier FTP cible `bl-tools-client-natinotes` (upload « in-place » du `dist/`).
 
@@ -441,7 +441,7 @@ teams/suisse-m-football        ← id : slug du nom
 
 ### Sécurité
 
-Le catch-all `allow read, write: if false` bloque toute collection non déclarée : sans règle explicite, l'écran ne fonctionnera pas en production. `teams` est réservée aux utilisateurs **authentifiés**, en lecture comme en écriture — contrairement à `widgets`, aucun accès anonyme n'est nécessaire puisque l'app cliente ne lit jamais cette collection. Voir `security-rules-prod.md`.
+Le catch-all `allow read, write: if false` bloque toute collection non déclarée : sans règle explicite, l'écran ne fonctionnera pas en production. `teams` est réservée aux utilisateurs **authentifiés**, en lecture comme en écriture — contrairement à `widgets`, aucun accès anonyme n'est nécessaire puisque l'app cliente ne lit jamais cette collection. Voir `firebase/prod/firestore.rules`.
 
 ---
 

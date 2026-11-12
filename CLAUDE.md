@@ -168,7 +168,17 @@ Détails :
 - `packages/services/firebase.js` initialise deux instances Firestore : `db` (config `VITE_FIREBASE_*`, = le `.env` actif) et `prodDb` (config `VITE_FIREBASE_PROD_*`, initialisée seulement si présente). Long-polling forcé (`experimentalForceLongPolling`).
 - **`utils` a besoin des deux connexions en même temps** (test *et* prod) pour son rôle de migration — d'où la double instance `db` / `prodDb`. Les apps clientes et le backend, eux, ne tapent qu'une seule base à la fois (le `.env` actif).
 - Auth : Firebase Auth email/password, uniquement dans le backend.
-- Les règles de sécurité Firestore de production sont documentées dans `security-rules-prod.md`.
+- Les règles de sécurité de production (Firestore + Storage) sont versionnées dans `firebase/prod/` : c'est la source de vérité, déployée par la CLI (section suivante).
+
+### Administration Firebase (CLI)
+
+`firebase-tools` est en devDependency racine ; la config vit dans `firebase/` (pas à la racine) :
+
+- `firebase/.firebaserc` — alias `prod` (`blick-tools-app-42a99`, renommé « sidekick-prod » à terme : seul le nom affiché change, l'ID est immuable). L'alias `test` sera ajouté quand le projet dédié `sidekick-test` existera. **Ne pas y mettre l'actuel `blick-tools-app`** : il héberge aussi des projets perso (`prizewatch`, `mahault8y`) et un déploiement depuis ce repo écraserait leurs règles.
+- `firebase/firebase.<env>.json` + `firebase/<env>/{firestore,storage}.rules` — une config par environnement, car test (full access, données jetables) et prod (compteurs anonymes restreints) n'ont pas les mêmes règles Firestore.
+- `npm run rules:pull:prod` — récupère les règles **réellement déployées** (API Firebase Rules, jeton de la config gcloud `blick-prod`). À lancer avant toute modification : `firebase deploy` remplace le ruleset entier, un fichier local périmé écraserait les retouches faites dans la console.
+- `npm run rules:deploy:<env>` — déploie les règles Firestore et Storage (ajouter `-- --dry-run` pour seulement les compiler côté serveur). Storage sert au back-office (`ImageUploader.jsx`, `PortraitUploader.jsx`) ; les widgets affichent les images par leur URL de téléchargement à jeton, non filtrée par les règles.
+- Comptes : tout passe sous `cesar.greppin@ringier.ch` (`firebase login` + config gcloud `blick-prod`).
 
 ## Déploiement
 

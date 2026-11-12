@@ -117,7 +117,7 @@ Nous allons adapter chaque application front-end pour lire la collection `widget
 
 ### 4. Procédure de Déploiement en Production (Option A : "In-Place")
 Le déploiement se fera application par application (stratégie Canary), pour minimiser les risques :
-1. Pousser le `security-rules-prod.md` sur Firebase pour sécuriser `widgets` (✅ Fait).
+1. Pousser le `firebase/prod/firestore.rules` sur Firebase pour sécuriser `widgets` (✅ Fait).
 2. Lancer la migration des données de prod depuis l'app `utils` (✅ Fait).
 3. Construire l'app ciblée (ex: `npm run build:testimony`) en s'assurant que le `.env` pointe sur la Prod.
 4. Uploader le contenu du dossier `dist` directement dans l'ancien répertoire du FTP (ex: `/__is_embed_somewhere/bl-tools-client-testimony`).

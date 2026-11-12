@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// Environnement de test (projet dédié `sidekick-test`).
+// Seul le back-office (compte connecté) envoie, lit et supprime des fichiers
+// via le SDK. Les widgets affichent les images par leur URL de téléchargement
+// (`getDownloadURL`, jeton inclus), que ces règles ne filtrent pas.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

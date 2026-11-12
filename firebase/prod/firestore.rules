@@ -1,14 +1,3 @@
-# Règles de sécurité — Production
-
-Source de vérité des règles de sécurité **Firestore** de la base **prod**.
-À coller dans : console Firebase → Firestore Database → Rules.
-
-> ℹ️ **Storage** : les règles du bucket (portraits natinotes) ne sont pas gérées
-> ici — la prod Storage est en `allow all` pour l'instant, par choix. À
-> restreindre le jour où ce sera nécessaire (écriture/suppression authentifiées,
-> lecture publique sur `portraits/`).
-
-```javascript
 rules_version = '2';
 
 service cloud.firestore {
@@ -50,7 +39,7 @@ service cloud.firestore {
           // Poll Answers
           (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['answerCounters'])) ||
           // Tinder
-          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['tinderVotes']) && isTinderVotesNumeric(request.resource.data.stats.tinderVotes)) ||
+          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['tinderVotes']) && request.resource.data.stats.tinderVotes is map) ||
           // Quiz
           (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['statsGlobal', 'statsQuestions'])) ||
           // POTM
@@ -144,8 +133,7 @@ service cloud.firestore {
           ) ||
           (
             request.resource.data.diff(resource.data).changedKeys().hasOnly(['tinderVotes']) &&
-            request.resource.data.tinderVotes is map &&
-            isTinderVotesNumeric(request.resource.data.tinderVotes)
+            request.resource.data.tinderVotes is map
           ) ||
           (
             request.resource.data.diff(resource.data).changedKeys().hasOnly(['statsGlobal', 'statsQuestions']) &&
@@ -235,14 +223,13 @@ service cloud.firestore {
     // =========================================================================
     // 🛠️ FONCTIONS COMMUNES
     // =========================================================================
-    function isTinderVotesNumeric(votes) {
-      // Boucle sur chaque clé du map
-      return votes.size() > 0 &&
-        votes.keys().hasOnly(['0', '1', '2']) && // adapte si tu as plus de clés
-        votes['0'].yes is number && votes['0'].no is number &&
-        votes['1'].yes is number && votes['1'].no is number &&
-        votes['2'].yes is number && votes['2'].no is number;
-    }
+    // NOTE TINDER : `stats.tinderVotes` (widgets) et `tinderVotes` (embeds) sont
+    // des maps clés par UUID de carte (`card.id` généré dans TinderForm.jsx),
+    // donc des clés dynamiques — PAS '0'/'1'/'2'. Firestore Rules ne permet pas
+    // de boucler sur des clés dynamiques : on valide uniquement que la valeur
+    // est un map, comme pour answerCounters (poll), itemVotes (prono) et
+    // itemCounters (facts). L'ancienne fonction isTinderVotesNumeric exigeait
+    // exactement hasOnly(['0','1','2']) et rejetait tous les votes UUID.
     
     // FONCTION POUR POTM
     function isValidPlayerVoteUpdate(oldPlayers, newPlayers) {
@@ -286,11 +273,3 @@ service cloud.firestore {
     }
   }
 }
-```
-
-## Déploiement
-
-1. **Basculer sur `.env-prod`** avant de builder/déployer les apps (backend + natinotes).
-2. **Firestore** : copier le bloc ci-dessus dans la console → Firestore → Rules → Publier.
-3. Vérifier après coup : un vote natinotes (anonyme) passe, et l'édition d'une
-   équipe + l'upload d'un portrait (authentifié) passent.

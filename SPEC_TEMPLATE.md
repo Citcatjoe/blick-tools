@@ -75,7 +75,7 @@
 
 ## 4. Sécurité & déploiement
 
-- **Firestore rules** : `<nouveaux compteurs stats à autoriser en écriture publique ? cf. security-rules-prod.md>`
+- **Firestore rules** : `<nouveaux compteurs stats à autoriser en écriture publique ? cf. firebase/prod/firestore.rules>`
 - **Env** : vérifier que `.env` pointe la bonne base (`.env-test` vs `.env-prod`) avant build.
 - **Déploiement** : dossier FTP cible `bl-tools-client-<type>` (upload « in-place » du `dist/`).
 
