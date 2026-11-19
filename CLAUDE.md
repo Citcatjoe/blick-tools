@@ -13,8 +13,10 @@ Tout se lance depuis la racine (les dépendances et les liens de packages locaux
 ```bash
 npm install                 # à la racine — installe tout et lie @rms/ui, @rms/services, @rms/widget-model
 npm run dev:<app>           # dev server Vite (ex: dev:poll, dev:backend, dev:quiz)
-npm run build:<app>         # build de production → apps/<app>/dist
+npm run build:<app>         # build double → apps/<app>/dist-dev (.env-test) + apps/<app>/dist-prod (.env-prod)
 ```
+
+Chaque `build:<app>` (backend + 11 apps clientes) produit **toujours** les deux builds via `scripts/build.mjs`, sans tenir compte du `.env` actif, avec un garde-fou qui vérifie le projet Firebase de chaque bundle. `docs` et `utils` gardent un build simple dans `dist`. Détails et état des environnements : **`ENVIRONNEMENTS.md`**.
 
 Apps disponibles : `poll`, `calendar`, `folder`, `teaser`, `facts`, `potm`, `prono`, `quiz`, `testimony`, `tinder`, `backend`, plus `docs` et `utils`. Service serveur : `api` (`npm run dev:api`, pas de build Vite).
 
@@ -157,11 +159,12 @@ Aucun snippet de gestion du consentement (CMP, `__tcfapi`, Didomi, OneTrust…) 
 
 ## Configuration & environnement
 
-Trois fichiers d'env à la racine (git-ignorés), tous préfixés **`VITE_`** et lus par toutes les apps via `envDir: '../../'` :
+Fichiers d'env à la racine (git-ignorés), tous préfixés **`VITE_`** et lus par toutes les apps via `envDir: '../../'`. **État courant des projets et migration en cours : `ENVIRONNEMENTS.md`** (à lire avant toute opération sur un environnement).
 
-- **`.env`** — le fichier **effectivement utilisé** au build / au run. Il n'a pas de contenu propre : c'est **une copie de `.env-test` ou de `.env-prod`** selon la tâche en cours. **Toujours vérifier lequel est actif avant de builder ou de lancer une app** (on ne veut pas écrire dans la mauvaise base).
-- **`.env-prod`** — identifiants Firebase de la base de **production**.
-- **`.env-test`** — identifiants Firebase de la base de **test / backup**.
+- **`.env-test`** — base **hors prod**, appelée « dev » (aujourd'hui le projet privé `blick-tools-app`, provisoirement, en attendant `sidekick-test-3ab83`). Alimente les builds `dist-dev`.
+- **`.env-prod`** — base de **production** (`blick-tools-app-42a99`). Alimente les builds `dist-prod`.
+- **`.env-test-sidekick`** — config prête du futur environnement de test `sidekick-test-3ab83`, pas encore utilisée.
+- **`.env`** — copie de `.env-test` ou `.env-prod`, utilisée uniquement par les serveurs de dev (`npm run dev:<app>`) et le déploiement de l'API. Les builds l'ignorent. **Vérifier lequel est actif avant de lancer une app** (on ne veut pas écrire dans la mauvaise base).
 
 Détails :
 
@@ -182,4 +185,4 @@ Détails :
 
 ## Déploiement
 
-Stratégie FTP « in-place » : le `dist/` de chaque widget est uploadé directement dans son ancien dossier FTP `bl-tools-client-<widget>`. Grâce à `base: "./"`, aucune redirection n'est nécessaire. Le backend inclut un `upload.php` pour l'upload d'images côté serveur. `oembed/oembed.php` se dépose à côté des dossiers `bl-tools-client-*`, dans `bl-tools-oembed/` (prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-oembed/oembed.php`).
+Stratégie FTP « in-place » : le `dist-prod/` de chaque widget est uploadé directement dans son ancien dossier FTP `bl-tools-client-<widget>`, le `dist-dev/` dans le dossier équivalent de l'environnement de dev (`_sandbox/blick-tools-test-env/`). Grâce à `base: "./"`, aucune redirection n'est nécessaire. Le backend inclut un `upload.php` pour l'upload d'images côté serveur. `oembed/oembed.php` se dépose à côté des dossiers `bl-tools-client-*`, dans `bl-tools-oembed/` (prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-oembed/oembed.php`).

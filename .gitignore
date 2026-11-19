@@ -23,6 +23,8 @@ jspm_packages/
 
 # Build outputs
 dist
+dist-dev
+dist-prod
 build
 .next
 .nuxt

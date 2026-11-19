@@ -55,8 +55,14 @@ partir du `.env` de l'environnement de destination (voir *Déploiement*).
 
 ## Mise en place (une fois par projet, par un propriétaire)
 
-Projets : test `blick-tools-app`, production `blick-tools-app-42a99` (se fier à l'**identifiant**,
+Projets : test `blick-tools-app` (provisoire, migration vers `sidekick-test-3ab83` en attente : voir
+[`ENVIRONNEMENTS.md`](../../ENVIRONNEMENTS.md)), production `blick-tools-app-42a99` (se fier à l'**identifiant**,
 cf. `n8n_workflows/acces_firestore.md`). Les deux sont sur le plan Blaze (confirmé le 2026-11-09).
+
+| Environnement | Service | Mis en place |
+|---|---|---|
+| test | `https://blick-tools-api-704592955335.europe-west1.run.app` | 2026-11-10 |
+| production | `https://blick-tools-api-273916803061.europe-west1.run.app` | 2026-11-19 (APIs, dépôt `blick-tools`, compte `api-blicktools-ecriture` créés en CLI) |
 
 ```bash
 P=$(grep '^VITE_FIREBASE_PROJECT_ID=' .env | cut -d= -f2-)   # .env = copie de .env-test ou .env-prod

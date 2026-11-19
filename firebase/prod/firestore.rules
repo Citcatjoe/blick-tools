@@ -6,16 +6,18 @@ service cloud.firestore {
     // =========================================================================
     // 🟢 NOUVELLE COLLECTION : WIDGETS
     // =========================================================================
-    match /widgets/{document=**} {
+    // Document widget seul (et non `{document=**}`) : la lecture publique ne
+    // couvre plus la sous-collection `messages` (données personnelles, audit S1).
+    match /widgets/{widgetId} {
       allow read: if true;
       
-      // Création réservée à l'admin authentifié (migration close).
-      allow create: if request.auth != null;
+      // Création, suppression, modification complète : membres de la rédaction
+      // (isMember(), cf. FONCTIONS COMMUNES), c'est-à-dire le Widget Studio.
+      allow create: if isMember();
 
-      allow delete: if request.auth != null;
+      allow delete: if isMember();
       
-      // L'admin peut tout modifier
-      allow update: if request.auth != null;
+      allow update: if isMember();
 
       // Utilisateur anonyme : uniquement les compteurs dans `stats` (et suppression optionnelle du root `ratingStats`)
       allow update: if (
@@ -56,8 +58,11 @@ service cloud.firestore {
       );
     }
     
-    // Sous-collection messages pour widgets (Testimony)
+    // Sous-collection messages pour widgets (Testimony) : le lecteur anonyme
+    // dépose un message ; seuls les membres les lisent (export depuis le Studio).
     match /widgets/{widgetId}/messages/{messageId} {
+      allow read, update, delete: if isMember();
+
       allow create: if (
         request.auth == null &&
         request.resource.data.keys().hasOnly(['email', 'name', 'text', 'timeSent']) &&
@@ -78,15 +83,15 @@ service cloud.firestore {
     // les apps clientes ne lisent jamais cette collection — un widget fige le
     // nom et le portrait de ses joueurs au moment de sa validation.
     match /teams/{teamId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isMember();
     }
 
     // =========================================================================
     // 🔵 ANCIENNE COLLECTION : EMBEDS (Héritage)
     // =========================================================================
-    match /embeds/{document=**} {
+    match /embeds/{embedId} {
       allow read: if true;
-      allow create, delete, update: if request.auth != null;
+      allow create, delete, update: if isMember();
 
       allow update: if (
         request.auth == null &&
@@ -200,6 +205,8 @@ service cloud.firestore {
 
     // Règle spécifique pour les messages de témoignage (ancienne version)
     match /embeds/{embedId}/messages/{messageId} {
+      allow read, update, delete: if isMember();
+
       allow create: if (
         request.auth == null &&
         request.resource.data.keys().hasOnly(['email', 'name', 'text', 'timeSent']) &&
@@ -223,6 +230,32 @@ service cloud.firestore {
     // =========================================================================
     // 🛠️ FONCTIONS COMMUNES
     // =========================================================================
+
+    // MEMBRES DE LA RÉDACTION (droits du Widget Studio)
+    // L'inscription Firebase Auth est ouverte (la connexion Google l'exige) et
+    // la clé API est publique : « connecté » ne suffit donc pas. Membre =
+    // une adresse @ringier.ch vérifiée (ce que garantit la connexion Google
+    // d'un compte Workspace), ou l'un des comptes à mot de passe créés avant
+    // la connexion Google, cités par uid. Le domaine est repris de
+    // ALLOWED_EMAIL_DOMAIN (apps/backend/src/components/Login/auth.js).
+    // Un compte qui se connecte une fois par Google garde son uid et devient
+    // vérifié : il peut alors sortir de la liste (cf. ENVIRONNEMENTS.md).
+    function isMember() {
+      return request.auth != null && (
+        request.auth.uid in [
+          'mkkQKj9KfGcgYvxQBo6Q8PUDEhd2', // cesar.greppin@ringier.ch
+          'slqfubzY6bREDLSEamBDuYldBnW2', // cesargreppin@gmail.com (maintenance)
+          'yZ8Jy3L8blUgX93A7ZxiWCJhPc63', // editinglab@ringier.ch
+          'eM9qU2asXZdCZAPrmWjxYHs32U23', // ellen.demeester@ringier.ch
+          'kcXsca1OdXc5g2jL7IxZS25oMqs1', // lucie.fehlbaum@ringier.ch
+          'g9AEvKJJRCehXKEqtWIgBEw15UP2', // myret.zaki@ringier.ch
+          'iXx7ttrFQiOymzcrQIFZ8CMTGJ62'  // toan.izaguirre@ringier.ch
+        ]
+        || (request.auth.token.get('email_verified', false) == true
+          && request.auth.token.get('email', '').lower().matches('.*@ringier[.]ch$'))
+      );
+    }
+
     // NOTE TINDER : `stats.tinderVotes` (widgets) et `tinderVotes` (embeds) sont
     // des maps clés par UUID de carte (`card.id` généré dans TinderForm.jsx),
     // donc des clés dynamiques — PAS '0'/'1'/'2'. Firestore Rules ne permet pas
