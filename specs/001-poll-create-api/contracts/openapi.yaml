@@ -13,7 +13,7 @@ info:
     `code` est stable et destiné aux machines ; `title`/`detail`/`message` sont en français.
 servers:
   - url: https://blick-tools-api-<hash>-ew.a.run.app
-    description: Une URL par environnement (test `blick-tools-app`, prod `blick-tools-app-42a99`)
+    description: Une URL par environnement (test `widget-studio-test`, prod `blick-tools-app-42a99`)
 security:
   - googleIdToken: []
 paths:

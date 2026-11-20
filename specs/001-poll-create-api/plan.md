@@ -20,7 +20,7 @@ par le dashboard et l'API : les deux écrivains produisent le même document par
 **Primary Dependencies**: API : `firebase-admin` 14, `google-auth-library` 11, `node:http` (pas
 de framework). Package partagé : aucune dépendance.
 
-**Storage**: Firestore, collection `widgets` (projet `blick-tools-app` en test,
+**Storage**: Firestore, collection `widgets` (projet `widget-studio-test` en test, `blick-tools-app` avant le 2026-11-20 ;
 `blick-tools-app-42a99` en production)
 
 **Testing**: `node --test` (package partagé + API, store en mémoire et vérificateur OIDC

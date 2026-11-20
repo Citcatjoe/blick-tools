@@ -1,7 +1,7 @@
 // Vérifie un fichier de règles Firestore AVANT publication, sans rien déployer ni écrire :
 // l'API « Rules test » de Firebase évalue le fichier local contre des requêtes simulées.
 //
-// Usage : node firebase/check-rules.mjs <prod|dev|test>
+// Usage : node firebase/check-rules.mjs <prod|test>
 // Authentification : gcloud, compte propriétaire du projet (cf. ENVIRONNEMENTS.md).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -14,21 +14,16 @@ const ENVS = {
     account: 'cesar.greppin@ringier.ch',
     legacyUid: 'kcXsca1OdXc5g2jL7IxZS25oMqs1', // compte à mot de passe de la liste (lucie.fehlbaum)
   },
-  dev: {
-    project: 'blick-tools-app',
-    account: 'cesargreppin@gmail.com',
-    legacyUid: 'EXNtznJAddPGUXH8Ix90xyagll33', // test@blicktools.ch
-  },
   test: {
     project: 'widget-studio-test',
     account: 'cesar.greppin@ringier.ch',
-    legacyUid: 'EXNtznJAddPGUXH8Ix90xyagll33', // test@blicktools.ch (uid importé depuis dev)
+    legacyUid: 'EXNtznJAddPGUXH8Ix90xyagll33', // test@blicktools.ch
   },
 };
 const envName = process.argv[2];
 const env = ENVS[envName];
 if (!env) {
-  console.error('Usage : node firebase/check-rules.mjs <prod|dev|test>');
+  console.error('Usage : node firebase/check-rules.mjs <prod|test>');
   process.exit(1);
 }
 const root = dirname(fileURLToPath(import.meta.url));

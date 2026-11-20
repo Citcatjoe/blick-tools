@@ -3,12 +3,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Projet de TEST `widget-studio-test` (organisation Ringier), rempli par
-    // firebase/migration-widget-studio-test/. Copie conforme des règles de dev
-    // (firebase/dev/firestore.rules) sans les collections perso de ce projet-là :
-    // le test reproduit la prod, à la liste des comptes près (mêmes uid qu'en
-    // dev, importés avec leurs mots de passe). Toute modification des règles
-    // de prod se reporte ici.
+    // Projet de TEST `widget-studio-test` (organisation Ringier). Mêmes règles
+    // que la prod pour widgets / teams / embeds (firebase/prod/firestore.rules),
+    // à la liste des comptes près. Toute modification des règles de prod se
+    // reporte ici.
     
     // =========================================================================
     // 🟢 NOUVELLE COLLECTION : WIDGETS
