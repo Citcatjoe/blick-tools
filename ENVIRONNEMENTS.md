@@ -55,11 +55,12 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
 
 ## API serveur (Hub Rédaction, extension Chrome)
 
-- Test : service Cloud Run `blick-tools-api` sur `widget-studio-test`, en `europe-west6`
+- Test (Hub `BLICK_TOOLS_API_URL_STAGE`) : service Cloud Run `blick-tools-api` sur `widget-studio-test`, en `europe-west6`
   (`https://blick-tools-api-1058200385938.europe-west6.run.app`), déployé le 2026-11-20.
 - Ancien dev : service `blick-tools-api` sur `blick-tools-app`
-  (`https://blick-tools-api-704592955335.europe-west1.run.app`), encore appelé par le Hub
-  (`BLICK_TOOLS_API_URL_STAGE`) jusqu'au changement d'URL ; à arrêter ensuite.
+  (`https://blick-tools-api-704592955335.europe-west1.run.app`). Plus appelé par le Hub depuis le
+  2026-11-20 (`BLICK_TOOLS_API_URL_STAGE` de `hub-backend` passée à l'API de test, révision `00016`,
+  même image) ; à arrêter.
 - Prod : service Cloud Run `blick-tools-api` sur `blick-tools-app-42a99`, déployé le 2026-11-19
   (`https://blick-tools-api-273916803061.europe-west1.run.app`, révision `00001`, image
   `blick-tools-api:20261119-103945`). Appelant unique : `hub-backend@rms-leserreporter-romandie`.
@@ -144,19 +145,18 @@ son nom ne correspondait plus à l'application). Scripts : `firebase/migration-w
 ⚠️ Les scripts d'écriture de `firebase/migration-widget-studio-test/` écrasent la cible : depuis la
 bascule, ils refusent de tourner sans `--ecraser` (ils effaceraient le travail fait en test).
 
-### Reste à faire (hors repo)
+### Reste à faire
 
-1. **API** : l'API de test produit déjà des `embedUrl` en `…/widget-studio-test/` (révision `00002`).
-   Communiquer `https://blick-tools-api-1058200385938.europe-west6.run.app` à l'équipe Hub
-   (`BLICK_TOOLS_API_URL_STAGE` sur `hub-backend`) ; arrêter ensuite l'API de l'ancien dev.
-2. **Extension Chrome** (`chrome-romandie-extension`) : chemins de stage passés à
-   `…/widget-studio-test/` (`detect.js`, README, tests, 156/156), non commité ; à recharger.
-3. **Sauvegarde FTP** : l'ancien contenu de test est dans
-   `…/widget-studio-test/________old_before_rename_test_env/`, accessible en ligne (ancien Studio
-   sur `blick-tools-app`) ; à supprimer une fois la bascule validée.
+1. **Ancienne API de dev** : supprimer le service `blick-tools-api` de `blick-tools-app` (dernier
+   appel du Hub le 2026-11-19).
+2. **Extension Chrome** : PR #23 `fix/widget-studio-test` → `develop` (chemins de stage en
+   `…/widget-studio-test/`, 157/157) à faire fusionner par le responsable du Hub, puis publier.
+
+Fait le 2026-11-20 : sauvegarde FTP `________old_before_rename_test_env` supprimée (404) ;
+`BLICK_TOOLS_API_URL_STAGE` de `hub-backend` sur `https://blick-tools-api-1058200385938.europe-west6.run.app`.
 
 FTP fait le 2026-11-20 : ancien dossier `blick-tools-test-env` renommé en `widget-studio-test`, vidé
-(contenu mis de côté, voir point 3) et rempli avec les 12 `dist-dev`. Vérifié en ligne : 12 dossiers
+(contenu mis de côté puis supprimé) et rempli avec les 12 `dist-dev`. Vérifié en ligne : 12 dossiers
 en 200, tous sur `widget-studio-test` ; sondage affiché, Studio avec bandeau de test, connexion
 refusée sur mauvais mot de passe par l'Auth du nouveau projet ; `blick-tools-test-env` en 404 ;
 aucun `_uploads/upload.php` joignable (test et prod).
