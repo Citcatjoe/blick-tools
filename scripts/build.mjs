@@ -4,7 +4,7 @@
 //         npm run build:<app>                 (même chose)
 //
 // Environnements (fichiers à la racine du monorepo, cf. ENVIRONNEMENTS.md) :
-//   dist-dev  ← .env-test   (aujourd'hui : projet privé blick-tools-app)
+//   dist-dev  ← .env-test   (projet de test widget-studio-test)
 //   dist-prod ← .env-prod   (projet blick-tools-app-42a99)
 //
 // Le `.env` actif n'est PAS utilisé : chaque build reçoit les variables de son fichier

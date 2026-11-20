@@ -49,7 +49,7 @@ Les apps Vite n'ont pas de suite de tests.
 
 Toutes les apps sauf `api` sont des projets **Vite + React 19 indépendants**, mais elles ne jouent pas le même rôle. Bien distinguer :
 
-- **`backend`** — l'application **« mère »** : le dashboard d'administration qui permet de **créer et éditer le contenu** consommé par les apps clientes (auth Firebase, CRUD Firestore, formulaires `Form/*.jsx`, `upload.php`). Avec `api` (création de sondages par le Hub Rédaction), c'est le seul point d'entrée d'écriture « métier » ; les widgets clients ne font que lire ce contenu et incrémenter des compteurs.
+- **`backend`** — l'application **« mère »** : le dashboard d'administration qui permet de **créer et éditer le contenu** consommé par les apps clientes (auth Firebase, CRUD Firestore, formulaires `Form/*.jsx`, images dans Firebase Storage). Avec `api` (création de sondages par le Hub Rédaction), c'est le seul point d'entrée d'écriture « métier » ; les widgets clients ne font que lire ce contenu et incrémenter des compteurs.
 
 - **`api`** — service Node (Cloud Run) d'écriture **serveur à serveur** : `POST /polls` pour le Hub Rédaction (OIDC Google + liste blanche, `Idempotency-Key`). Écrit avec un compte de service dédié (contourne les règles Firestore, borné par l'IAM). Contrat et décisions : `specs/001-poll-create-api/` ; déploiement : `apps/api/README.md`. Ne lit pas le `.env` racine.
 
@@ -161,9 +161,9 @@ Aucun snippet de gestion du consentement (CMP, `__tcfapi`, Didomi, OneTrust…) 
 
 Fichiers d'env à la racine (git-ignorés), tous préfixés **`VITE_`** et lus par toutes les apps via `envDir: '../../'`. **État courant des projets et migration en cours : `ENVIRONNEMENTS.md`** (à lire avant toute opération sur un environnement).
 
-- **`.env-test`** — base **hors prod**, appelée « dev » (aujourd'hui le projet privé `blick-tools-app`, provisoirement, en attendant `sidekick-test-3ab83`). Alimente les builds `dist-dev`.
+- **`.env-test`** — base **hors prod**, appelée « dev » ou « test » : projet Ringier `widget-studio-test` (depuis le 2026-11-20 ; avant, le projet privé `blick-tools-app`). Alimente les builds `dist-dev`.
 - **`.env-prod`** — base de **production** (`blick-tools-app-42a99`). Alimente les builds `dist-prod`.
-- **`.env-test-sidekick`** — config prête du futur environnement de test `sidekick-test-3ab83`, pas encore utilisée.
+- **`.env-test-blick-tools-app`** — ancienne config de dev (projet privé `blick-tools-app`), gardée pour revenir en arrière.
 - **`.env`** — copie de `.env-test` ou `.env-prod`, utilisée uniquement par les serveurs de dev (`npm run dev:<app>`) et le déploiement de l'API. Les builds l'ignorent. **Vérifier lequel est actif avant de lancer une app** (on ne veut pas écrire dans la mauvaise base).
 
 Détails :
@@ -177,12 +177,12 @@ Détails :
 
 `firebase-tools` est en devDependency racine ; la config vit dans `firebase/` (pas à la racine) :
 
-- `firebase/.firebaserc` — alias `prod` (`blick-tools-app-42a99`, renommé « sidekick-prod » à terme : seul le nom affiché change, l'ID est immuable). L'alias `test` sera ajouté quand le projet dédié `sidekick-test` existera. **Ne pas y mettre l'actuel `blick-tools-app`** : il héberge aussi des projets perso (`prizewatch`, `mahault8y`) et un déploiement depuis ce repo écraserait leurs règles.
-- `firebase/firebase.<env>.json` + `firebase/<env>/{firestore,storage}.rules` — une config par environnement, car test (full access, données jetables) et prod (compteurs anonymes restreints) n'ont pas les mêmes règles Firestore.
+- `firebase/.firebaserc` — alias `prod` (`blick-tools-app-42a99` : seul le nom affiché peut changer, l'ID est immuable) et `test` (`widget-studio-test`, projet Ringier dédié). **Ne pas y mettre l'ancien projet de dev `blick-tools-app`** : il héberge aussi des projets perso (`prizewatch`, `mahault8y`) et un déploiement depuis ce repo écraserait leurs règles.
+- `firebase/firebase.<env>.json` + `firebase/<env>/{firestore,storage}.rules` — une config par environnement. Les règles Firestore de test et de l'ancien dev (`firebase/dev/`) reprennent celles de la prod (`isMember()` : `@ringier.ch` vérifié ou liste d'uid), seule la liste des comptes change. `npm run rules:check:<env>` les vérifie contre 22 cas simulés avant tout déploiement.
 - `npm run rules:pull:prod` — récupère les règles **réellement déployées** (API Firebase Rules, jeton de la config gcloud `blick-prod`). À lancer avant toute modification : `firebase deploy` remplace le ruleset entier, un fichier local périmé écraserait les retouches faites dans la console.
 - `npm run rules:deploy:<env>` — déploie les règles Firestore et Storage (ajouter `-- --dry-run` pour seulement les compiler côté serveur). Storage sert au back-office (`ImageUploader.jsx`, `PortraitUploader.jsx`) ; les widgets affichent les images par leur URL de téléchargement à jeton, non filtrée par les règles.
 - Comptes : tout passe sous `cesar.greppin@ringier.ch` (`firebase login` + config gcloud `blick-prod`).
 
 ## Déploiement
 
-Stratégie FTP « in-place » : le `dist-prod/` de chaque widget est uploadé directement dans son ancien dossier FTP `bl-tools-client-<widget>`, le `dist-dev/` dans le dossier équivalent de l'environnement de dev (`_sandbox/blick-tools-test-env/`). Grâce à `base: "./"`, aucune redirection n'est nécessaire. Le backend inclut un `upload.php` pour l'upload d'images côté serveur. `oembed/oembed.php` se dépose à côté des dossiers `bl-tools-client-*`, dans `bl-tools-oembed/` (prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-oembed/oembed.php`).
+Stratégie FTP « in-place » : le `dist-prod/` de chaque widget est uploadé directement dans son ancien dossier FTP `bl-tools-client-<widget>`, le `dist-dev/` dans le dossier équivalent de l'environnement de test (`_sandbox/widget-studio-test/bl-tools-client-<widget>`, Studio dans `_sandbox/widget-studio-test/backend/`). Grâce à `base: "./"`, aucune redirection n'est nécessaire. Les apps ne déposent rien sur le serveur : les images du Studio vont dans Firebase Storage (l'ancien `upload.php` a été supprimé). `oembed/oembed.php` se dépose à côté des dossiers `bl-tools-client-*`, dans `bl-tools-oembed/` (prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-oembed/oembed.php`).

@@ -7,12 +7,12 @@ Brief autonome pour le dépôt du Hub (extension CMS). Contrat formel :
 
 | Hub | Blick Tools | URL de l'API (= audience du jeton) | Base des `embedUrl` |
 |---|---|---|---|
-| stage | test (`blick-tools-app`) | `https://blick-tools-api-704592955335.europe-west1.run.app` | `https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/bl-tools-client-` |
-| prod | prod (`blick-tools-app-42a99`) | communiquée après le déploiement prod | `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-` |
+| stage | test (`widget-studio-test`) | `https://blick-tools-api-1058200385938.europe-west6.run.app` | `https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/bl-tools-client-` |
+| prod | prod (`blick-tools-app-42a99`) | `https://blick-tools-api-273916803061.europe-west1.run.app` | `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-` |
 
 L'URL de l'API est une **configuration par environnement** du Hub (ex. `BLICK_TOOLS_API_URL`),
 jamais en dur. Les sondages créés depuis le stage vivent dans la base de test de Blick Tools,
-visibles dans le dashboard de test : https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/backend/
+visibles dans le dashboard de test : https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/backend/
 
 ## Authentification
 
@@ -162,7 +162,7 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 
 Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools-client-*` :
 
-- test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/backend/?edit=<id>`
+- test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/backend/?edit=<id>`
 - prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-backend/?edit=<id>`
 
 ## Hors périmètre de l'API

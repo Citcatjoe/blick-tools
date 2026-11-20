@@ -43,9 +43,9 @@ npm run dev:api        # nécessite les variables ci-dessous ; sans identifiants
 
 | Variable | Exemple | Rôle |
 |---|---|---|
-| `API_AUDIENCE` | `https://blick-tools-api-704592955335.europe-west1.run.app` | Audience attendue dans l'ID token = URL du service |
+| `API_AUDIENCE` | `https://blick-tools-api-1058200385938.europe-west6.run.app` | Audience attendue dans l'ID token = URL du service |
 | `ALLOWED_CALLERS` | `hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com` | Liste blanche d'e-mails, séparés par des virgules |
-| `CLIENT_BASE_URL` | prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-` · test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/bl-tools-client-` | Base des `embedUrl` (même valeur que `VITE_CLIENT_BASE_URL` de l'environnement) |
+| `CLIENT_BASE_URL` | prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-` · test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/bl-tools-client-` | Base des `embedUrl` (même valeur que `VITE_CLIENT_BASE_URL` de l'environnement) |
 | `PORT` | fourni par Cloud Run | |
 
 Le service refuse de démarrer si l'une manque. Il n'y a **aucun** fallback vers la production. Le
@@ -55,19 +55,20 @@ partir du `.env` de l'environnement de destination (voir *Déploiement*).
 
 ## Mise en place (une fois par projet, par un propriétaire)
 
-Projets : test `blick-tools-app` (provisoire, migration vers `sidekick-test-3ab83` en attente : voir
+Projets : test `widget-studio-test` (depuis le 2026-11-20, voir
 [`ENVIRONNEMENTS.md`](../../ENVIRONNEMENTS.md)), production `blick-tools-app-42a99` (se fier à l'**identifiant**,
-cf. `n8n_workflows/acces_firestore.md`). Les deux sont sur le plan Blaze (confirmé le 2026-11-09).
+cf. `n8n_workflows/acces_firestore.md`). Les deux sont sur le plan Blaze.
 
 | Environnement | Service | Mis en place |
 |---|---|---|
-| test | `https://blick-tools-api-704592955335.europe-west1.run.app` | 2026-11-10 |
+| test (`widget-studio-test`) | `https://blick-tools-api-1058200385938.europe-west6.run.app` | 2026-11-20 (APIs, dépôt `blick-tools` et comptes `api-blicktools-ecriture` / `api-smoke-caller` créés en CLI, région `europe-west6` comme Firestore) |
+| ancien test (`blick-tools-app`) | `https://blick-tools-api-704592955335.europe-west1.run.app` | 2026-11-10 ; à arrêter quand le Hub aura changé d'URL |
 | production | `https://blick-tools-api-273916803061.europe-west1.run.app` | 2026-11-19 (APIs, dépôt `blick-tools`, compte `api-blicktools-ecriture` créés en CLI) |
 
 ```bash
 P=$(grep '^VITE_FIREBASE_PROJECT_ID=' .env | cut -d= -f2-)   # .env = copie de .env-test ou .env-prod
 export CLOUDSDK_ACTIVE_CONFIG_NAME=$([ "$P" = blick-tools-app-42a99 ] && echo blick-prod || echo blick-test)
-R=europe-west1   # au plus près de Firestore (eur3 = Belgique + Pays-Bas)
+R=$([ "$P" = widget-studio-test ] && echo europe-west6 || echo europe-west1)   # au plus près de Firestore (eur3 = Belgique + Pays-Bas, europe-west6 = Zurich)
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --project $P
 gcloud artifacts repositories create blick-tools --repository-format=docker --location=$R --project $P
 ```
@@ -90,7 +91,7 @@ partent vers Cloud Build (`.gcloudignore` racine : manifestes npm, `packages/wid
 P=$(grep '^VITE_FIREBASE_PROJECT_ID=' .env | cut -d= -f2-)
 BASE=$(grep '^VITE_CLIENT_BASE_URL=' .env | cut -d= -f2-)
 export CLOUDSDK_ACTIVE_CONFIG_NAME=$([ "$P" = blick-tools-app-42a99 ] && echo blick-prod || echo blick-test)
-R=europe-west1
+R=$([ "$P" = widget-studio-test ] && echo europe-west6 || echo europe-west1)
 HUB=hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com
 CALLERS=$HUB          # en test seulement : CALLERS=$HUB,api-smoke-caller@$P.iam.gserviceaccount.com
 NUM=$(gcloud projects describe $P --format 'value(projectNumber)')

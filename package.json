@@ -40,9 +40,10 @@
     "test:widget-model": "npm test -w packages/widget-model",
     "rules:pull:prod": "node firebase/pull-rules.mjs prod",
     "rules:deploy:prod": "node firebase/check-rules.mjs prod && firebase deploy --only firestore:rules,storage --config firebase/firebase.prod.json --project prod",
-    "rules:deploy:test": "firebase deploy --only firestore:rules,storage --config firebase/firebase.test.json --project test",
+    "rules:deploy:test": "node firebase/check-rules.mjs test && firebase deploy --only firestore:rules,storage --config firebase/firebase.test.json --project test",
     "rules:check:prod": "node firebase/check-rules.mjs prod",
     "rules:check:dev": "node firebase/check-rules.mjs dev",
+    "rules:check:test": "node firebase/check-rules.mjs test",
     "rules:deploy:dev": "node firebase/check-rules.mjs dev && node firebase/publish-rules-dev.mjs"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
-// Inventaire lecture seule du projet source (compte perso).
+// Inventaire lecture seule d'un projet (collections, sous-collections, buckets).
+// Usage : node inventory.mjs <compte> <projet>
 import { createRequire } from 'module';
 const require = createRequire(new URL('../../package.json', import.meta.url));
 const { Firestore } = require('@google-cloud/firestore');

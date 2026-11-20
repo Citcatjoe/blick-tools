@@ -1,6 +1,6 @@
 {
   "projects": {
     "prod": "blick-tools-app-42a99",
-    "test": "sidekick-test-3ab83"
+    "test": "widget-studio-test"
   }
 }

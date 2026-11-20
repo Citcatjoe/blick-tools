@@ -26,8 +26,8 @@ Vérificateur OIDC réel, jeton bidon → `401` :
 
 ```bash
 API_AUDIENCE=http://localhost:8080 ALLOWED_CALLERS=hub@example.iam.gserviceaccount.com \
-CLIENT_BASE_URL=https://www.prod.storytelling.blick.ch/fr/_sandbox/blick-tools-test-env/bl-tools-client- \
-GOOGLE_CLOUD_PROJECT=blick-tools-app npm run start -w apps/api &
+CLIENT_BASE_URL=https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/bl-tools-client- \
+GOOGLE_CLOUD_PROJECT=widget-studio-test npm run start -w apps/api &
 curl -i -X POST localhost:8080/polls -H 'Authorization: Bearer abc' \
   -H 'Content-Type: application/json' -d '{}'
 # → 401, WWW-Authenticate: Bearer, {"code":"UNAUTHENTICATED",…}
@@ -48,13 +48,13 @@ npm run dev:backend   # .env actif = .env-test !
 
 ## 3. Environnement de test GCP (après déploiement, cf. `apps/api/README.md`)
 
-Appelant de recette, **en test uniquement** : compte `api-smoke-caller@blick-tools-app` (sans rôle
+Appelant de recette, **en test uniquement** : compte `api-smoke-caller@widget-studio-test` (sans rôle
 ni clé), ajouté à `ALLOWED_CALLERS` du déploiement de test et autorisé à invoquer le service. Il
 faut s'accorder *Créateur de jetons du compte de service* sur ce compte : le rôle Propriétaire ne
 permet pas d'émettre de jeton pour un compte de service.
 
 ```bash
-P=blick-tools-app; R=europe-west1; export CLOUDSDK_ACTIVE_CONFIG_NAME=blick-test
+P=widget-studio-test; R=europe-west6
 URL=https://blick-tools-api-$(gcloud projects describe $P --format 'value(projectNumber)').$R.run.app
 TOKEN=$(gcloud auth print-identity-token \
   --impersonate-service-account=api-smoke-caller@$P.iam.gserviceaccount.com \
