@@ -60,7 +60,7 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
 - Ancien dev : service `blick-tools-api` sur `blick-tools-app`
   (`https://blick-tools-api-704592955335.europe-west1.run.app`). Plus appelé par le Hub depuis le
   2026-11-20 (`BLICK_TOOLS_API_URL_STAGE` de `hub-backend` passée à l'API de test, révision `00016`,
-  même image) ; à arrêter.
+  même image) ; service supprimé le 2026-11-20 (l'image reste dans Artifact Registry du projet).
 - Prod : service Cloud Run `blick-tools-api` sur `blick-tools-app-42a99`, déployé le 2026-11-19
   (`https://blick-tools-api-273916803061.europe-west1.run.app`, révision `00001`, image
   `blick-tools-api:20261119-103945`). Appelant unique : `hub-backend@rms-leserreporter-romandie`.
@@ -147,13 +147,12 @@ bascule, ils refusent de tourner sans `--ecraser` (ils effaceraient le travail f
 
 ### Reste à faire
 
-1. **Ancienne API de dev** : supprimer le service `blick-tools-api` de `blick-tools-app` (dernier
-   appel du Hub le 2026-11-19).
-2. **Extension Chrome** : PR #23 `fix/widget-studio-test` → `develop` (chemins de stage en
+1. **Extension Chrome** : PR #23 `fix/widget-studio-test` → `develop` (chemins de stage en
    `…/widget-studio-test/`, 157/157) à faire fusionner par le responsable du Hub, puis publier.
 
 Fait le 2026-11-20 : sauvegarde FTP `________old_before_rename_test_env` supprimée (404) ;
-`BLICK_TOOLS_API_URL_STAGE` de `hub-backend` sur `https://blick-tools-api-1058200385938.europe-west6.run.app`.
+`BLICK_TOOLS_API_URL_STAGE` de `hub-backend` sur `https://blick-tools-api-1058200385938.europe-west6.run.app`,
+recette par César (création, détection, modification) ; ancienne API de dev supprimée.
 
 FTP fait le 2026-11-20 : ancien dossier `blick-tools-test-env` renommé en `widget-studio-test`, vidé
 (contenu mis de côté puis supprimé) et rempli avec les 12 `dist-dev`. Vérifié en ligne : 12 dossiers

@@ -62,7 +62,7 @@ cf. `n8n_workflows/acces_firestore.md`). Les deux sont sur le plan Blaze.
 | Environnement | Service | Mis en place |
 |---|---|---|
 | test (`widget-studio-test`) | `https://blick-tools-api-1058200385938.europe-west6.run.app` | 2026-11-20 (APIs, dépôt `blick-tools` et comptes `api-blicktools-ecriture` / `api-smoke-caller` créés en CLI, région `europe-west6` comme Firestore) |
-| ancien test (`blick-tools-app`) | `https://blick-tools-api-704592955335.europe-west1.run.app` | 2026-11-10 ; à arrêter quand le Hub aura changé d'URL |
+| ancien test (`blick-tools-app`) | `https://blick-tools-api-704592955335.europe-west1.run.app` | 2026-11-10 ; supprimée le 2026-11-20 |
 | production | `https://blick-tools-api-273916803061.europe-west1.run.app` | 2026-11-19 (APIs, dépôt `blick-tools`, compte `api-blicktools-ecriture` créés en CLI) |
 
 ```bash
