@@ -1,4 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { AlreadyExistsError, unavailable } from './errors.js';
 
 // Codes gRPC renvoyés par le SDK Admin Firestore.
@@ -24,6 +24,7 @@ export function createFirestoreStore(firestore) {
   const widgets = firestore.collection('widgets');
   return {
     serverTimestamp: () => FieldValue.serverTimestamp(),
+    toTimestamp: (date) => Timestamp.fromDate(date),
     newId: () => widgets.doc().id,
     async create(id, doc) {
       try {

@@ -1,4 +1,4 @@
-# Intégration côté Hub Rédaction — création de sondages Blick Tools
+# Intégration côté Hub Rédaction — widgets Blick Tools (sondages, calendriers, tinders, quiz)
 
 Brief autonome pour le dépôt du Hub (extension CMS). Contrat formel :
 [`contracts/openapi.yaml`](./contracts/openapi.yaml) — à copier dans le dépôt du Hub si besoin.
@@ -145,6 +145,36 @@ Corps :
 - `200` : même forme que `GET` (état après modification). `404` si introuvable.
 - Écriture transactionnelle (1 lecture + 1 écriture).
 
+## Calendriers, tinders et quiz (spec `002-hub-widgets-api`)
+
+Même authentification, liste blanche, `Idempotency-Key` (propre à l'appelant **et** au format),
+limite de corps et erreurs que `POST /polls`. Création et lecture seulement : toute correction se
+fait dans le dashboard (`?edit=<id>`). Marque : `blick` seulement (`pme` refusée). Rubrique
+obligatoire (`Suisse` · `Inter` · `Sport`). `author` facultatif (e-mail du journaliste). Champs
+détaillés : [`specs/002-hub-widgets-api/data-model.md`](../002-hub-widgets-api/data-model.md).
+
+| Format | Création | Lecture | Corps minimal |
+|---|---|---|---|
+| Calendrier | `POST /calendars` | `GET /calendars/{id}` | `{ "title", "theme", "dates": [{ "text", "start" }] }` |
+| Tinder | `POST /tinders` | `GET /tinders/{id}` | `{ "label", "title", "theme", "cards": [{ "label", "title" }] }` (1 à 3 cartes) |
+| Quiz | `POST /quizzes` | `GET /quizzes/{id}` | `{ "title", "theme", "questions": [{ "text", "answers": [4 × { "text", "isCorrect"? }] }], "conclusion": { "text1", "text2", "text3" } }` |
+
+- **Calendrier** : `start` en ISO 8601. Avec décalage (`2026-12-20T20:45:00+01:00`, `…Z`) →
+  respecté ; sans (`2026-12-20T20:45`) → heure suisse. Champs facultatifs : `complement` par date,
+  `nbElemsToShow` (1–10, absent = toutes), `linkGlobal: { text, href, newTab? }` (texte et URL
+  ensemble, `href` en `http(s)://`).
+- **Tinder** : chaque carte reçoit un id ; votes `{ yes, no }` par carte.
+- **Quiz** : exactement 4 réponses et **une** `isCorrect: true` par question ; trois conclusions
+  obligatoires ; `hint` et `hidePercent` facultatifs ; `img` facultative = **URL https publique**.
+  L'API télécharge l'image (≤ 10 Mo, 10 s), la convertit comme le dashboard et en stocke une copie
+  chez Blick Tools : l'URL d'origine peut disparaître ensuite. Image injoignable ou illisible →
+  `400` sur `questions[i].img`, rien n'est créé. Prévoir un délai d'appel plus long (≈ 30 s) pour
+  un quiz avec plusieurs images.
+- **Lecture** : contenu + compteurs (`views`, `seeAllClicks` ; votes `yes`/`no` par carte ;
+  `correct`/`incorrect` par question, `plays`, `scoreDistribution`). Un id d'un autre format →
+  `404`.
+- `embedUrl` : `…/bl-tools-client-<type>/?<type>Doc=<id>` (sans `&brand=`).
+
 ## Portée du Hub par format
 
 Le Hub prépare l'intégration d'un Blick Tools dans l'article Ring et assure les corrections
@@ -153,12 +183,14 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 | Format | Création Hub | Correction Hub | Détail (dashboard) |
 |---|---|---|---|
 | **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
-| **Tous les autres** (`calendar`, `teaser`, `folder`, `tinder`, `quiz`, `testimony`, `potm`, `prono`, `facts`, `natinotes`) | non | non | détectés dans l'article, édition dans le dashboard (`?edit=<id>`) |
+| **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | aucune (lecture seule) | tout (`?edit=<id>`) |
+| **Tous les autres** (`teaser`, `folder`, `testimony`, `potm`, `prono`, `facts`, `natinotes`) | non | non | détectés dans l'article, édition dans le dashboard (`?edit=<id>`) |
 
-> **Publication automatique — exception confirmée** : pour le flux de création de sondage en
-> 1 clic, l'Embeddable Ring est **publié automatiquement** (décision confirmée par le
-> propriétaire du Hub Rédaction, le 2026-11-10). Tout autre Embeddable reste en publication
-> manuelle, selon la règle générale du CMS.
+> **Publication automatique** : pour le flux de création de sondage en 1 clic, l'Embeddable Ring
+> est **publié automatiquement** (exception confirmée par le propriétaire du Hub Rédaction le
+> 2026-11-10). **Extension aux calendriers, tinders et quiz décidée côté Blick Tools le
+> 2026-11-26 — à faire confirmer par le propriétaire du Hub Rédaction.** Tout autre Embeddable
+> reste en publication manuelle, selon la règle générale du CMS.
 
 Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools-client-*` :
 
@@ -167,9 +199,9 @@ Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools
 
 ## Hors périmètre de l'API
 
-Pas de suppression d'un sondage, pas de lecture/édition des autres types de widgets : un sondage
-se supprime dans le dashboard Blick Tools. Le CMS garde la main sur l'`id` et l'`embedUrl` qu'il
-a reçus à la création.
+Pas de suppression de widget ; pas de correction des calendriers, tinders et quiz ; ni lecture ni
+édition des autres formats : tout cela se fait dans le dashboard Blick Tools. Le CMS garde la main
+sur l'`id` et l'`embedUrl` qu'il a reçus à la création.
 
 ## Recette sur le stage
 

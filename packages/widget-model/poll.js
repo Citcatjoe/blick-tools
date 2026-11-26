@@ -1,8 +1,10 @@
 // Règles métier du widget `poll`, communes au dashboard et à l'API.
 // Valeurs admises relevées en production le 2026-11-09 (specs/001-poll-create-api/research.md R3).
 
+import { WIDGET_THEMES } from './common.js';
+
 export const POLL_BRANDS = Object.freeze(['blick', 'pme']);
-export const POLL_THEMES = Object.freeze(['Suisse', 'Inter', 'Sport']);
+export const POLL_THEMES = WIDGET_THEMES;
 export const DEFAULT_POLL_BRAND = 'blick';
 
 const isMissing = (value) => value === undefined || value === null || value === '';

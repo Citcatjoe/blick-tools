@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { validatePoll, validatePollEdits, buildPollSaveData, transformWidgetData, buildEmbedUrl } from '@rms/widget-model';
-import { ApiError, AlreadyExistsError } from './errors.js';
+import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
 
 export const DEFAULT_AUTHOR = 'Hub Rédaction';
 
@@ -8,11 +8,17 @@ const REQUEST_FIELDS = new Set(['question', 'answers', 'theme', 'brand', 'author
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const IDEMPOTENCY_KEY = /^[\x21-\x7E]{1,255}$/;
 
-const validationFailed = (errors) =>
-  new ApiError(400, 'VALIDATION_FAILED', 'Requête invalide', {
-    detail: `${errors.length} champ(s) invalide(s).`,
-    errors,
-  });
+/** Erreurs de l'auteur facultatif (e-mail du journaliste), commun à toutes les créations. */
+export function authorErrors(author) {
+  if (author === undefined || author === null) return [];
+  if (typeof author !== 'string') {
+    return [{ field: 'author', code: 'invalid_type', message: 'L\'auteur doit être une adresse e-mail.' }];
+  }
+  if (author.length > 254 || !EMAIL.test(author)) {
+    return [{ field: 'author', code: 'invalid_value', message: 'Adresse e-mail de l\'auteur invalide.' }];
+  }
+  return [];
+}
 
 /**
  * Corps JSON → entrée partagée `PollInput`. Toutes les violations sont réunies en une erreur.
@@ -38,13 +44,7 @@ export function parseCreatePollRequest(body) {
   };
   errors.push(...validatePoll(input));
 
-  if (author !== undefined && author !== null) {
-    if (typeof author !== 'string') {
-      errors.push({ field: 'author', code: 'invalid_type', message: 'L\'auteur doit être une adresse e-mail.' });
-    } else if (author.length > 254 || !EMAIL.test(author)) {
-      errors.push({ field: 'author', code: 'invalid_value', message: 'Adresse e-mail de l\'auteur invalide.' });
-    }
-  }
+  errors.push(...authorErrors(author));
 
   if (errors.length > 0) throw validationFailed(errors);
   return { input, author: author ?? DEFAULT_AUTHOR };

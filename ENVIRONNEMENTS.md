@@ -48,12 +48,16 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
 
 - Test (`BLICK_TOOLS_API_URL_STAGE` de `hub-backend`) : service Cloud Run `blick-tools-api` sur
   `widget-studio-test`, en `europe-west6` (`https://blick-tools-api-1058200385938.europe-west6.run.app`),
-  déployé le 2026-11-20. Appelants : `hub-backend@rms-leserreporter-romandie` et
-  `api-smoke-caller@widget-studio-test` (recette).
+  déployé le 2026-11-20 ; calendriers, tinders et quiz (spec 002) ajoutés et recettés le 2026-11-26
+  (`STORAGE_BUCKET=widget-studio-test.firebasestorage.app`, rôle `storage.objectAdmin` du compte
+  `api-blicktools-ecriture` sur ce seul bucket). Appelants : `hub-backend@rms-leserreporter-romandie`
+  et `api-smoke-caller@widget-studio-test` (recette).
 - Prod (`BLICK_TOOLS_API_URL_PROD` de `hub-backend`) : service Cloud Run `blick-tools-api` sur
   `blick-tools-app-42a99` (`https://blick-tools-api-273916803061.europe-west1.run.app`), déployé le
-  2026-11-19. Appelant unique : `hub-backend@rms-leserreporter-romandie`.
-- Procédure de déploiement : `apps/api/README.md`.
+  2026-11-19 (sondages seulement ; spec 002 pas encore déployée). Appelant unique :
+  `hub-backend@rms-leserreporter-romandie`.
+- Procédure de déploiement : `apps/api/README.md` (variable `STORAGE_BUCKET` obligatoire depuis la
+  spec 002).
 
 ## Règles de sécurité et connexion
 

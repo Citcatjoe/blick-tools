@@ -3,7 +3,8 @@
 API serveur à serveur, déployée sur Cloud Run. Premier appelant : backend **Hub Rédaction**.
 
 - Contrat : [`specs/001-poll-create-api/contracts/openapi.yaml`](../../specs/001-poll-create-api/contracts/openapi.yaml)
-- Spec, décisions, modèle : [`specs/001-poll-create-api/`](../../specs/001-poll-create-api/)
+- Spec, décisions, modèle : [`specs/001-poll-create-api/`](../../specs/001-poll-create-api/) (sondages),
+  [`specs/002-hub-widgets-api/`](../../specs/002-hub-widgets-api/) (calendriers, tinders, quiz)
 - Documents produits par la même fabrique que le dashboard : [`@rms/widget-model`](../../packages/widget-model/)
 
 ## `POST /polls` en bref
@@ -29,6 +30,15 @@ GET   /polls/{id}    → { id, embedUrl, question, answers: [{ id, text, votes }
 PATCH /polls/{id}    → { question?, answers?: [{ id, text }], editor } ; textes seuls, votes jamais écrits
 ```
 
+Calendriers, tinders et quiz (création et lecture, même auth ; détails :
+[`specs/002-hub-widgets-api/data-model.md`](../../specs/002-hub-widgets-api/data-model.md)) :
+
+```http
+POST /calendars   GET /calendars/{id}
+POST /tinders     GET /tinders/{id}
+POST /quizzes     GET /quizzes/{id}    (images : URL https copiée dans le Storage de l'environnement)
+```
+
 ## Développement
 
 ```bash
@@ -46,6 +56,7 @@ npm run dev:api        # nécessite les variables ci-dessous ; sans identifiants
 | `API_AUDIENCE` | `https://blick-tools-api-1058200385938.europe-west6.run.app` | Audience attendue dans l'ID token = URL du service |
 | `ALLOWED_CALLERS` | `hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com` | Liste blanche d'e-mails, séparés par des virgules |
 | `CLIENT_BASE_URL` | prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-` · test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/bl-tools-client-` | Base des `embedUrl` (même valeur que `VITE_CLIENT_BASE_URL` de l'environnement) |
+| `STORAGE_BUCKET` | prod : `blick-tools-app-42a99.firebasestorage.app` · test : `widget-studio-test.firebasestorage.app` | Bucket des copies d'images de quiz (même valeur que `VITE_FIREBASE_STORAGE_BUCKET`) |
 | `PORT` | fourni par Cloud Run | |
 
 Le service refuse de démarrer si l'une manque. Il n'y a **aucun** fallback vers la production. Le
@@ -73,9 +84,19 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregi
 gcloud artifacts repositories create blick-tools --repository-format=docker --location=$R --project $P
 ```
 
-Compte de service de l'API : `api-blicktools-ecriture@<projet>.iam.gserviceaccount.com`, rôle
-*Utilisateur Cloud Datastore* uniquement, sans clé (créé dans la console ; jamais
-`firebase-adminsdk-*`).
+Compte de service de l'API : `api-blicktools-ecriture@<projet>.iam.gserviceaccount.com`, sans clé
+(jamais `firebase-adminsdk-*`), avec deux rôles seulement :
+
+- *Utilisateur Cloud Datastore* (`roles/datastore.user`) sur le projet ;
+- *Administrateur des objets Storage* (`roles/storage.objectAdmin`) sur le **seul bucket** de
+  l'environnement (images de quiz : création, jeton de téléchargement, suppression si la création
+  échoue). Jamais au niveau du projet :
+
+```bash
+BUCKET=$(grep '^VITE_FIREBASE_STORAGE_BUCKET=' .env | cut -d= -f2-)
+gcloud storage buckets add-iam-policy-binding gs://$BUCKET --project $P \
+  --member serviceAccount:api-blicktools-ecriture@$P.iam.gserviceaccount.com --role roles/storage.objectAdmin
+```
 
 Appelant autorisé : `hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com` (compte dédié
 du backend Hub Rédaction, communiqué le 2026-11-09).
@@ -90,6 +111,7 @@ partent vers Cloud Build (`.gcloudignore` racine : manifestes npm, `packages/wid
 ```bash
 P=$(grep '^VITE_FIREBASE_PROJECT_ID=' .env | cut -d= -f2-)
 BASE=$(grep '^VITE_CLIENT_BASE_URL=' .env | cut -d= -f2-)
+BUCKET=$(grep '^VITE_FIREBASE_STORAGE_BUCKET=' .env | cut -d= -f2-)
 export CLOUDSDK_ACTIVE_CONFIG_NAME=$([ "$P" = blick-tools-app-42a99 ] && echo blick-prod || echo blick-test)
 R=$([ "$P" = widget-studio-test ] && echo europe-west6 || echo europe-west1)
 HUB=hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com
@@ -97,7 +119,7 @@ CALLERS=$HUB          # en test seulement : CALLERS=$HUB,api-smoke-caller@$P.iam
 NUM=$(gcloud projects describe $P --format 'value(projectNumber)')
 AUDIENCE=https://blick-tools-api-$NUM.$R.run.app
 IMAGE=$R-docker.pkg.dev/$P/blick-tools/blick-tools-api:$(date +%Y%m%d-%H%M%S)
-echo "Projet $P — embedUrl $BASE — appelants $CALLERS"   # dernier contrôle avant d'écrire
+echo "Projet $P — embedUrl $BASE — bucket $BUCKET — appelants $CALLERS"   # dernier contrôle avant d'écrire
 
 # 1. Construire et pousser l'image (Cloud Build)
 gcloud builds submit --project $P --config apps/api/cloudbuild.yaml --substitutions=_IMAGE=$IMAGE
@@ -106,7 +128,7 @@ gcloud builds submit --project $P --config apps/api/cloudbuild.yaml --substituti
 gcloud run deploy blick-tools-api --project $P --region $R --image $IMAGE \
   --service-account api-blicktools-ecriture@$P.iam.gserviceaccount.com \
   --no-allow-unauthenticated \
-  --set-env-vars "^##^API_AUDIENCE=$AUDIENCE##ALLOWED_CALLERS=$CALLERS##CLIENT_BASE_URL=$BASE"
+  --set-env-vars "^##^API_AUDIENCE=$AUDIENCE##ALLOWED_CALLERS=$CALLERS##CLIENT_BASE_URL=$BASE##STORAGE_BUCKET=$BUCKET"
 
 # 3. Autoriser le Hub à invoquer le service (en plus de la liste blanche applicative)
 gcloud run services add-iam-policy-binding blick-tools-api --project $P --region $R \

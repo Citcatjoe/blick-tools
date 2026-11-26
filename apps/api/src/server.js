@@ -1,10 +1,13 @@
 import http from 'node:http';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { OAuth2Client } from 'google-auth-library';
 import { loadConfig } from './config.js';
 import { createCallerVerifier } from './auth.js';
 import { createFirestoreStore } from './firestoreStore.js';
+import { createImageStore } from './imageStore.js';
+import { fetchImageSafely, toDashboardWebp } from './images.js';
 import { createApp, logToStdout } from './app.js';
 
 let config;
@@ -28,6 +31,8 @@ const server = http.createServer(
     }),
     store: createFirestoreStore(getFirestore()),
     clientBaseUrl: config.clientBaseUrl,
+    images: { fetch: (url) => fetchImageSafely(url), convert: toDashboardWebp },
+    imageStore: createImageStore(getStorage().bucket(config.storageBucket)),
   }),
 );
 
@@ -37,6 +42,7 @@ server.listen(config.port, () => {
     audience: config.audience,
     allowedCallers: [...config.allowedCallers],
     clientBaseUrl: config.clientBaseUrl,
+    storageBucket: config.storageBucket,
   });
 });
 

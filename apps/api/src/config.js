@@ -3,7 +3,8 @@
 
 /**
  * @param {Record<string, string | undefined>} env
- * @returns {{ audience: string, allowedCallers: Set<string>, clientBaseUrl: string, port: number }}
+ * @returns {{ audience: string, allowedCallers: Set<string>, clientBaseUrl: string,
+ *   storageBucket: string, port: number }}
  */
 export function loadConfig(env) {
   const problems = [];
@@ -26,11 +27,19 @@ export function loadConfig(env) {
     problems.push('CLIENT_BASE_URL doit être une URL https se terminant par "/bl-tools-client-"');
   }
 
+  // Bucket Firebase Storage de l'environnement (images de quiz) = VITE_FIREBASE_STORAGE_BUCKET.
+  const storageBucket = env.STORAGE_BUCKET?.trim();
+  if (!storageBucket) {
+    problems.push('STORAGE_BUCKET manquante (bucket Firebase Storage de l\'environnement)');
+  } else if (!/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(storageBucket)) {
+    problems.push(`STORAGE_BUCKET invalide : ${storageBucket}`);
+  }
+
   const port = Number(env.PORT ?? 8080);
   if (!Number.isInteger(port) || port < 1 || port > 65535) problems.push(`PORT invalide : ${env.PORT}`);
 
   if (problems.length > 0) {
     throw new Error(`Configuration invalide : ${problems.join(' ; ')}`);
   }
-  return Object.freeze({ audience, allowedCallers: new Set(allowedCallers), clientBaseUrl, port });
+  return Object.freeze({ audience, allowedCallers: new Set(allowedCallers), clientBaseUrl, storageBucket, port });
 }

@@ -1,5 +1,6 @@
 import { ApiError, sendJson, sendProblem } from './errors.js';
 import { parseCreatePollRequest, parseIdempotencyKey, createPoll, getPoll, updatePoll } from './polls.js';
+import { RESOURCE_TYPES, parseCreateRequest, createWidget, getWidget } from './widgets.js';
 
 export const MAX_BODY_BYTES = 64 * 1024;
 
@@ -59,15 +60,53 @@ function readJsonBody(req) {
  * l'authentification.
  *
  * @param {{ verifyCaller: (authorization?: string) => Promise<{ email: string }>,
- *   store: object, clientBaseUrl: string, log?: typeof logToStdout }} deps
+ *   store: object, clientBaseUrl: string, log?: typeof logToStdout,
+ *   images?: { fetch: (url: string) => Promise<Buffer>, convert: (buffer: Buffer) => Promise<Buffer> },
+ *   imageStore?: { put: (webp: Buffer, prefix: string) => Promise<{ url: string, path: string }>, remove: (path: string) => Promise<void> } }} deps
  */
-export function createApp({ verifyCaller, store, clientBaseUrl, log = logToStdout }) {
+export function createApp({ verifyCaller, store, clientBaseUrl, images, imageStore, log = logToStdout }) {
   return async function handleRequest(req, res) {
     const startedAt = Date.now();
     let caller;
     try {
       const { pathname } = new URL(req.url, 'http://localhost');
       const byId = pathname.match(/^\/polls\/([^/]+)$/);
+      const widgetRoute = pathname.match(/^\/(calendars|tinders|quizzes)(?:\/([^/]+))?$/);
+
+      if (widgetRoute) {
+        const type = RESOURCE_TYPES[widgetRoute[1]];
+        const id = widgetRoute[2] === undefined ? undefined : decodeSegment(widgetRoute[2]);
+        const allowed = id === undefined ? 'POST' : 'GET';
+        if (req.method !== allowed) {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: allowed } });
+        }
+        caller = await verifyCaller(req.headers.authorization);
+
+        if (id !== undefined) {
+          const result = await getWidget(type, { id }, { store, clientBaseUrl });
+          sendJson(res, 200, result);
+          log('INFO', `${type} read`, { caller: caller.email, widgetId: id, status: 200, durationMs: Date.now() - startedAt });
+          return;
+        }
+
+        if (!isJson(req.headers['content-type'])) {
+          throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Type de contenu non pris en charge', {
+            detail: 'Content-Type: application/json attendu.',
+          });
+        }
+        const idempotencyKey = parseIdempotencyKey(req.headers['idempotency-key']);
+        const { input, author } = parseCreateRequest(type, await readJsonBody(req));
+        const result = await createWidget(type, { input, author, caller, idempotencyKey }, { store, clientBaseUrl, images, imageStore });
+        sendJson(res, result.status, result.body, result.replayed ? { 'Idempotent-Replayed': 'true' } : {});
+        log('INFO', result.replayed ? `${type} replayed` : `${type} created`, {
+          caller: caller.email,
+          widgetId: result.body.id,
+          status: result.status,
+          idempotent: Boolean(idempotencyKey),
+          durationMs: Date.now() - startedAt,
+        });
+        return;
+      }
 
       if (pathname === '/polls') {
         if (req.method !== 'POST') {

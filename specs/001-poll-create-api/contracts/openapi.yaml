@@ -1,9 +1,11 @@
 openapi: 3.1.0
 info:
   title: Blick Tools API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
+    Formats : sondages (`/polls`, création, lecture, correction des textes) ; calendriers,
+    tinders et quiz (`/calendars`, `/tinders`, `/quizzes`, création et lecture — spec 002).
 
     **Authentification** : `Authorization: Bearer <ID token Google>` émis pour le compte de
     service de l'appelant, avec `audience` = URL du service Blick Tools API de l'environnement
@@ -210,12 +212,174 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+  /calendars:
+    post:
+      operationId: createCalendar
+      summary: Créer un calendrier
+      description: |
+        Dates : date-heure ISO 8601. Avec décalage (`Z`, `+01:00`), l'instant est respecté ;
+        sans décalage (`2026-12-20T20:45`), il est lu en heure suisse (Europe/Zurich, heure
+        d'été gérée ; heure inexistante au passage à l'heure d'été refusée ; heure ambiguë du
+        passage à l'heure d'hiver lue en heure d'hiver).
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCalendarRequest' }
+            example:
+              title: Coupe du monde 2026
+              theme: Sport
+              dates:
+                - { text: Finale, complement: Lusail, start: '2026-12-20T20:45' }
+              linkGlobal: { text: Tout le programme, href: 'https://www.blick.ch/sport', newTab: true }
+      responses: &createResponses
+        '201':
+          description: Créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatePollResponse' }
+        '200':
+          description: 'Rejeu idempotent (en-tête `Idempotent-Replayed: true`)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatePollResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /calendars/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getCalendar
+      summary: Lire un calendrier
+      responses:
+        '200':
+          description: Calendrier
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Calendar' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /tinders:
+    post:
+      operationId: createTinder
+      summary: Créer un tinder
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTinderRequest' }
+            example:
+              label: Débat
+              title: Pour ou contre ?
+              theme: Suisse
+              cards: [{ label: Énergie, title: Nucléaire }, { label: Transports, title: Péage urbain }]
+      responses: *createResponses
+  /tinders/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getTinder
+      summary: Lire un tinder
+      responses:
+        '200':
+          description: Tinder
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tinder' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /quizzes:
+    post:
+      operationId: createQuiz
+      summary: Créer un quiz
+      description: |
+        Image de question facultative : URL https publique. L'API télécharge l'image (≤ 10 Mo,
+        10 s, hôtes privés refusés), la convertit comme le dashboard (WebP, ≤ 1928 px, ≈ 75 Ko)
+        et en stocke une copie dans le Firebase Storage de l'environnement ; l'URL d'origine
+        n'est jamais référencée. Image invalide → `400` sur `questions[i].img`, rien n'est créé.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateQuizRequest' }
+            example:
+              title: Connaissez-vous la Suisse ?
+              theme: Suisse
+              questions:
+                - text: Combien de cantons compte la Suisse ?
+                  img: 'https://example.com/carte.jpg'
+                  answers: [{ text: '23' }, { text: '26', isCorrect: true }, { text: '24' }, { text: '20' }]
+              conclusion: { text1: Révisez !, text2: Pas mal., text3: Bravo ! }
+      responses: *createResponses
+  /quizzes/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getQuiz
+      summary: Lire un quiz
+      responses:
+        '200':
+          description: Quiz
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quiz' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 components:
   securitySchemes:
     googleIdToken:
       type: http
       scheme: bearer
       bearerFormat: JWT (Google-signed OIDC ID token)
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Même règle que `POST /polls` ; la clé est propre à l'appelant et au format.
+      schema: { type: string, minLength: 1, maxLength: 255, pattern: '^[\x21-\x7E]+$' }
+    WidgetId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Identifiant Firestore du widget (`?<type>Doc=` de l'URL d'embed).
+  responses:
+    BadRequest:
+      description: '`VALIDATION_FAILED` (toutes les violations dans `errors`), `INVALID_JSON` ou `INVALID_IDEMPOTENCY_KEY`.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Forbidden:
+      description: '`FORBIDDEN` — identité hors liste blanche.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    NotFound:
+      description: '`NOT_FOUND` — inexistant ou d''un autre format.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Conflict:
+      description: '`IDEMPOTENCY_CONFLICT`.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    TooLarge:
+      description: '`PAYLOAD_TOO_LARGE` — corps > 64 Kio.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    UnsupportedMediaType:
+      description: '`UNSUPPORTED_MEDIA_TYPE`.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unavailable:
+      description: '`UNAVAILABLE` — Firestore ou Storage temporairement indisponible ; rejouer avec la même clé.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
   schemas:
     CreatePollRequest:
       type: object
@@ -299,6 +463,160 @@ components:
         editor:
           type: string
           description: E-mail du journaliste, conservé comme trace (`meta.updatedBy`).
+    WidgetCommonFields:
+      type: object
+      properties:
+        theme: { type: string, enum: [Suisse, Inter, Sport], description: Rubrique (obligatoire). }
+        brand: { type: string, enum: [blick], default: blick, description: Seule la marque blick est admise pour ces formats. }
+        author: { type: string, format: email, maxLength: 254, description: Défaut « Hub Rédaction ». }
+    CreateCalendarRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [title, theme, dates]
+      properties:
+        title: { type: string, description: Titre du calendrier, non vide. }
+        dates:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [text, start]
+            properties:
+              text: { type: string }
+              complement: { type: string }
+              start: { type: string, description: 'ISO 8601 date-heure ; sans décalage = heure suisse.', example: '2026-12-20T20:45' }
+        nbElemsToShow: { type: integer, minimum: 1, maximum: 10, description: Absent = toutes les dates. }
+        linkGlobal:
+          type: object
+          additionalProperties: false
+          required: [text, href]
+          properties:
+            text: { type: string }
+            href: { type: string, pattern: '^https?://' }
+            newTab: { type: boolean, default: false }
+    Calendar:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        title: { type: string }
+        dates:
+          type: array
+          items:
+            type: object
+            properties:
+              text: { type: string }
+              complement: { type: string }
+              start: { type: [string, 'null'], format: date-time, description: Instant en UTC. }
+        nbElemsToShow: { type: [integer, 'null'], description: 100 = toutes. }
+        linkGlobal:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties: { text: { type: string }, href: { type: string }, newTab: { type: boolean } }
+        views: { type: integer }
+        seeAllClicks: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreateTinderRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [label, title, theme, cards]
+      properties:
+        label: { type: string }
+        title: { type: string }
+        cards:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: object
+            additionalProperties: false
+            required: [label, title]
+            properties: { label: { type: string }, title: { type: string } }
+    Tinder:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        label: { type: string }
+        title: { type: string }
+        cards:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: [string, 'null'] }
+              label: { type: string }
+              title: { type: string }
+              yes: { type: integer }
+              no: { type: integer }
+        views: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreateQuizRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [title, theme, questions, conclusion]
+      properties:
+        title: { type: string }
+        questions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [text, answers]
+            properties:
+              text: { type: string }
+              hint: { type: string }
+              hidePercent: { type: boolean, default: false }
+              img: { type: string, format: uri, description: URL https ; copiée par l'API. }
+              answers:
+                type: array
+                minItems: 4
+                maxItems: 4
+                description: 'Exactement une réponse avec `isCorrect: true`.'
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [text]
+                  properties: { text: { type: string }, isCorrect: { type: boolean, default: false } }
+        conclusion:
+          type: object
+          additionalProperties: false
+          required: [text1, text2, text3]
+          description: Textes selon le score (0–33 %, 34–66 %, 67–100 %), tous obligatoires.
+          properties: { text1: { type: string }, text2: { type: string }, text3: { type: string } }
+    Quiz:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        title: { type: string }
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: [string, 'null'] }
+              text: { type: string }
+              hint: { type: string }
+              img: { type: string, description: URL de la copie dans le Storage Blick Tools. }
+              hidePercent: { type: boolean }
+              answers: { type: array, items: { type: object, properties: { text: { type: string }, isCorrect: { type: boolean } } } }
+              correct: { type: integer }
+              incorrect: { type: integer }
+        conclusion: { type: object, properties: { text1: { type: string }, text2: { type: string }, text3: { type: string } } }
+        plays: { type: integer, description: Parties terminées (somme de la distribution des scores). }
+        scoreDistribution: { type: object, additionalProperties: { type: integer } }
+        views: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
     Problem:
       type: object
       required: [status, code, title]
@@ -330,8 +648,8 @@ components:
       properties:
         field:
           type: string
-          description: '`question`, `answers`, `answers[i]` (base 0), `theme`, `brand`, `author`, `editor`, `body` (corps non objet) ou le nom d''un champ inconnu.'
+          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `theme`, `brand`, `author`, `editor`, `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
         code:
           type: string
-          enum: [required, invalid_type, invalid_value, too_few, unknown_field]
+          enum: [required, invalid_type, invalid_value, too_few, too_many, unknown_field]
         message: { type: string }

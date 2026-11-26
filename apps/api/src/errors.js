@@ -25,6 +25,12 @@ export class AlreadyExistsError extends Error {}
 export const unavailable = (detail) =>
   new ApiError(503, 'UNAVAILABLE', 'Service temporairement indisponible', { detail, headers: { 'Retry-After': '5' } });
 
+export const validationFailed = (errors) =>
+  new ApiError(400, 'VALIDATION_FAILED', 'Requête invalide', {
+    detail: `${errors.length} champ(s) invalide(s).`,
+    errors,
+  });
+
 function send(res, status, contentType, body, headers) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
