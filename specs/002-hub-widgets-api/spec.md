@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-26
 
-**Status**: Implemented — test déployé, prod en attente
+**Status**: Implemented — test recetté, prod déployée (recette par le Hub)
 
 **Input**: User description: "J'aimerais intégrer la possibilité, depuis l'extension, d'intégrer des
 calendriers, tinder et quiz. Il faut étendre l'API pour permettre ceci en prod comme en test."

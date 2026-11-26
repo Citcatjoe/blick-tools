@@ -54,8 +54,10 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
   et `api-smoke-caller@widget-studio-test` (recette).
 - Prod (`BLICK_TOOLS_API_URL_PROD` de `hub-backend`) : service Cloud Run `blick-tools-api` sur
   `blick-tools-app-42a99` (`https://blick-tools-api-273916803061.europe-west1.run.app`), déployé le
-  2026-11-19 (sondages seulement ; spec 002 pas encore déployée). Appelant unique :
-  `hub-backend@rms-leserreporter-romandie`.
+  2026-11-19 ; calendriers, tinders et quiz (spec 002) déployés le 2026-11-26 (révision
+  `blick-tools-api-00002-mns`, `STORAGE_BUCKET=blick-tools-app-42a99.firebasestorage.app`, rôle
+  `storage.objectAdmin` sur ce seul bucket). Appelant unique : `hub-backend@rms-leserreporter-romandie`
+  (pas de compte de recette : première vérification réelle par le Hub).
 - Procédure de déploiement : `apps/api/README.md` (variable `STORAGE_BUCKET` obligatoire depuis la
   spec 002).
 

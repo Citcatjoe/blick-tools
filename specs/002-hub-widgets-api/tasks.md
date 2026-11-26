@@ -37,4 +37,4 @@ description: "Tâches — calendriers, tinders et quiz via l'API"
 
 - [X] T016 `001/contracts/openapi.yaml` (6 opérations, schémas), `integration-hub.md` (formats, portée, publication 1 clic à confirmer), `apps/api/README.md` (`STORAGE_BUCKET`, IAM bucket), `CLAUDE.md`
 - [X] T017 Test : IAM bucket, build, déploiement, recette réelle (quickstart §3)
-- [ ] T018 Prod : IAM bucket, build, déploiement (compte pro), contrôle (lecture d'un widget existant de chaque format)
+- [X] T018 Prod : IAM bucket, build, déploiement (révision `blick-tools-api-00002-mns`, 2026-11-26) ; contrôle sans écriture (démarrage, config, 403 sans jeton) — recette réelle par le Hub (pas de compte de recette en prod)
