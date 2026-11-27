@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-27
 
-**Status**: Implemented — non déployé.
+**Status**: Implemented — déployé en test (révision `blick-tools-api-00010-z6g`, 2026-11-27), prod non déployée
 
 **Input**: L'extension Sidekick (Hub Rédaction) doit pouvoir modifier les widgets déjà placés dans
 un article : elle pré-remplit son formulaire avec `GET /<ressource>/{id}` → `form` et enregistre
