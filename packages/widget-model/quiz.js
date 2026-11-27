@@ -6,7 +6,8 @@ import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkT
 
 export const QUIZ_ANSWERS_PER_QUESTION = 4;
 export const QUIZ_CONCLUSION_KEYS = Object.freeze(['text1', 'text2', 'text3']);
-const CONCLUSION_RANGES = { text1: '0–33 %', text2: '34–66 %', text3: '67–100 %' };
+/** Tranche de score de chaque texte de conclusion. */
+export const QUIZ_CONCLUSION_RANGES = Object.freeze({ text1: '0–33 %', text2: '34–66 %', text3: '67–100 %' });
 
 /**
  * Toutes les violations, dans l'ordre du dashboard (rubrique, titre, questions, conclusions) puis
@@ -62,9 +63,9 @@ export function validateQuiz({ theme, title, questions, conclusion, brand } = {}
   }
 
   if (!conclusion || typeof conclusion !== 'object' || Array.isArray(conclusion)) {
-    QUIZ_CONCLUSION_KEYS.forEach((key) => fail(`conclusion.${key}`, 'required', `La conclusion pour un score de ${CONCLUSION_RANGES[key]} est obligatoire.`));
+    QUIZ_CONCLUSION_KEYS.forEach((key) => fail(`conclusion.${key}`, 'required', `La conclusion pour un score de ${QUIZ_CONCLUSION_RANGES[key]} est obligatoire.`));
   } else {
-    QUIZ_CONCLUSION_KEYS.forEach((key) => checkText(conclusion[key], `conclusion.${key}`, `La conclusion pour un score de ${CONCLUSION_RANGES[key]}`, fail));
+    QUIZ_CONCLUSION_KEYS.forEach((key) => checkText(conclusion[key], `conclusion.${key}`, `La conclusion pour un score de ${QUIZ_CONCLUSION_RANGES[key]}`, fail));
   }
 
   checkBrand(brand, BLICK_ONLY_BRANDS, fail);

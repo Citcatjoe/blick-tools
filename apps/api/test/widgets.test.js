@@ -4,7 +4,7 @@ import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import sharp from 'sharp';
-import { transformWidgetData, buildCalendarSaveData, buildTinderSaveData, buildQuizSaveData } from '@rms/widget-model';
+import { transformWidgetData, buildCalendarSaveData, buildTinderSaveData, buildQuizSaveData, WIDGET_FORMS } from '@rms/widget-model';
 import { createApp } from '../src/app.js';
 import { createCallerVerifier } from '../src/auth.js';
 import { AlreadyExistsError } from '../src/errors.js';
@@ -445,3 +445,110 @@ test('conversion comme le dashboard : WebP ≤ 1928 px et ≤ 75 Ko, y compris u
   assert.deepEqual([simpleMeta.width, simpleMeta.height], [1928, 1285]); // pas de réduction inutile
   await assert.rejects(toDashboardWebp(Buffer.from('<html>pas une image</html>')), ImageError);
 });
+
+// ---------------------------------------------------------------- description des formulaires (spec 004)
+
+const VALUES = { text: 'Texte', textarea: 'Texte', url: 'https://www.blick.ch', datetime: '2026-12-20T20:45', checkbox: true, image: 'https://images.ringier.ch/a.jpg' };
+
+/**
+ * Requête construite à partir de la description seule : champs obligatoires (`all` : tous les
+ * champs), listes au nombre minimal d'éléments, bonne réponse sur le premier élément.
+ */
+function sampleFrom(fields, { all = false } = {}) {
+  const out = {};
+  for (const field of fields) {
+    if (field.kind === 'list') {
+      const item = () => (field.item ? VALUES[field.item.kind] : sampleFrom(field.fields, { all }));
+      out[field.key] = Array.from({ length: Math.max(field.min, 1) }, item);
+      if (field.correct) out[field.key][0][field.correct] = true;
+    } else if (field.required || all) {
+      if (field.kind === 'group') out[field.key] = sampleFrom(field.fields, { all });
+      else if (field.kind === 'choice') out[field.key] = field.options[0].value;
+      else out[field.key] = VALUES[field.kind];
+    }
+  }
+  return out;
+}
+
+/** Chemins des champs obligatoires (dans le premier élément des listes) : [chemin, champs parents]. */
+function requiredPaths(fields, at = '') {
+  const paths = [];
+  for (const field of fields) {
+    const path = `${at}${field.key}`;
+    if (field.kind === 'list') {
+      paths.push(path);
+      if (field.fields) paths.push(...requiredPaths(field.fields, `${path}[0].`));
+    } else if (field.required) {
+      paths.push(path);
+      if (field.kind === 'group') paths.push(...requiredPaths(field.fields, `${path}.`));
+    }
+  }
+  return paths;
+}
+
+/** Retire (ou remplace) la valeur au chemin `a.b[0].c` d'une copie de la requête. */
+function withPath(request, path, value) {
+  const copy = structuredClone(request);
+  const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+  const parent = keys.slice(0, -1).reduce((node, key) => node[key], copy);
+  if (value === undefined) delete parent[keys.at(-1)];
+  else parent[keys.at(-1)] = value;
+  return copy;
+}
+
+test('GET /widget-types : la description des 4 formats, telle que dans le modèle partagé', async () => {
+  const res = await call('GET', '/widget-types');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.json.formats.map((f) => [f.type, f.resource]), [['poll', 'polls'], ['calendar', 'calendars'], ['tinder', 'tinders'], ['quiz', 'quizzes']]);
+  assert.deepEqual(res.json.formats, JSON.parse(JSON.stringify(WIDGET_FORMS)));
+  assert.equal((await call('GET', '/widget-types', undefined, { token: null })).status, 401);
+  assert.equal((await call('GET', '/widget-types', undefined, { token: 'stranger' })).status, 403);
+  const post = await call('POST', '/widget-types', {});
+  assert.deepEqual([post.status, post.headers.get('allow')], [405, 'GET']);
+});
+
+for (const form of WIDGET_FORMS) {
+  test(`description du ${form.noun} conforme aux règles de l'API : exemple accepté, chaque champ obligatoire et chaque borne vérifiés`, async () => {
+    const minimal = sampleFrom(form.fields);
+    assert.equal((await call('POST', `/${form.resource}`, minimal)).status, 201, 'champs obligatoires seuls');
+    const complete = sampleFrom(form.fields, { all: true });
+    const accepted = await call('POST', `/${form.resource}`, complete);
+    assert.equal(accepted.status, 201, `tous les champs décrits sont acceptés : ${JSON.stringify(accepted.json.errors ?? '')}`);
+
+    for (const path of requiredPaths(form.fields)) {
+      const res = await call('POST', `/${form.resource}`, withPath(minimal, path));
+      assert.equal(res.status, 400, `${path} absent`);
+      assert.ok(res.json.errors.some((e) => e.field === path || e.field.startsWith(`${path}.`) || e.field.startsWith(`${path}[`)), `${path} absent → erreur sur ce champ : ${JSON.stringify(fields(res))}`);
+    }
+
+    const lists = [];
+    const collect = (fieldsList, at) => fieldsList.forEach((field) => {
+      if (field.kind !== 'list') return;
+      lists.push([`${at}${field.key}`, field]);
+      if (field.fields) collect(field.fields, `${at}${field.key}[0].`);
+    });
+    collect(form.fields, '');
+    for (const [path, field] of lists) {
+      // Liste de n éléments, copies du premier de l'exemple (bonne réponse sur le premier seulement).
+      const first = path.split(/[.[\]]+/).filter(Boolean).reduce((node, key) => node[key], minimal)[0];
+      const other = field.correct ? { ...first, [field.correct]: undefined } : first;
+      const sized = (n) => withPath(minimal, path, Array.from({ length: n }, (_, i) => structuredClone(i === 0 ? first : other)));
+      if (field.max !== null) {
+        const res = await call('POST', `/${form.resource}`, sized(field.max + 1));
+        assert.equal(res.status, 400, `${path} : ${field.max + 1} éléments`);
+        assert.ok(res.json.errors.some((e) => e.field === path), `${path} au-delà du maximum : ${JSON.stringify(fields(res))}`);
+      }
+      if (field.min > 1) {
+        const res = await call('POST', `/${form.resource}`, sized(field.min - 1));
+        assert.equal(res.status, 400, `${path} : ${field.min - 1} éléments`);
+        assert.ok(res.json.errors.some((e) => e.field === path), `${path} sous le minimum : ${JSON.stringify(fields(res))}`);
+      }
+      if (field.correct) {
+        const parent = path.replace(/\.[^.]+$/, '');
+        const none = withPath(minimal, `${path}[0].${field.correct}`);
+        const res = await call('POST', `/${form.resource}`, none);
+        assert.ok(res.json.errors?.some((e) => e.field === `${parent}.correctAnswer`), `${path} sans bonne réponse : ${JSON.stringify(fields(res))}`);
+      }
+    }
+  });
+}

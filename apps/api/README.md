@@ -6,7 +6,8 @@ API serveur à serveur, déployée sur Cloud Run. Premier appelant : backend **H
 - Spec, décisions, modèle : [`specs/001-poll-create-api/`](../../specs/001-poll-create-api/) (sondages),
   [`specs/002-hub-widgets-api/`](../../specs/002-hub-widgets-api/) (calendriers, tinders, quiz),
   [`specs/003-hub-parity-images/`](../../specs/003-hub-parity-images/) (mêmes règles que le dashboard,
-  envoi d'image)
+  envoi d'image), [`specs/004-hub-form-descriptions/`](../../specs/004-hub-form-descriptions/)
+  (description des formulaires)
 - Documents produits par la même fabrique que le dashboard : [`@rms/widget-model`](../../packages/widget-model/)
 
 ## `POST /polls` en bref
@@ -40,6 +41,7 @@ POST /calendars   GET /calendars/{id}
 POST /tinders     GET /tinders/{id}
 POST /quizzes     GET /quizzes/{id}    (images : URL https copiée dans le Storage de l'environnement)
 POST /images      corps = fichier brut (JPEG/PNG/WebP/GIF ≤ 10 Mo) → 201 { url } pour questions[i].img
+GET /widget-types description des formulaires de création (WIDGET_FORMS de @rms/widget-model)
 ```
 
 ## Développement

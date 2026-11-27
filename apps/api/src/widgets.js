@@ -8,7 +8,7 @@ import {
   validateCalendar, buildCalendarSaveData,
   validateTinder, buildTinderSaveData,
   validateQuiz, buildQuizSaveData,
-  transformWidgetData, buildEmbedUrl, DEFAULT_BRAND,
+  transformWidgetData, buildEmbedUrl, DEFAULT_BRAND, requestFieldKeys,
 } from '@rms/widget-model';
 import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
 import { DEFAULT_AUTHOR, authorErrors } from './polls.js';
@@ -16,7 +16,12 @@ import { parseDateTime } from './dates.js';
 import { ImageError } from './images.js';
 import { QUIZ_PREFIX } from './imageStore.js';
 
-const COMMON_FIELDS = ['theme', 'brand', 'author'];
+// Champs acceptés par format : ceux de la description des formulaires (spec 004), seule liste.
+const KEYS = {
+  calendar: requestFieldKeys('calendar'),
+  tinder: requestFieldKeys('tinder'),
+  quiz: requestFieldKeys('quiz'),
+};
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -48,10 +53,10 @@ const FORMATS = {
   calendar: {
     resource: 'calendars',
     noun: 'calendrier',
-    fields: [...COMMON_FIELDS, 'title', 'dates', 'nbElemsToShow', 'linkGlobal'],
+    fields: KEYS.calendar.root,
     parse(body, errors) {
-      eachItem(body.dates, 'dates', ['text', 'complement', 'start'], errors);
-      errors.push(...unknownFields(body.linkGlobal, ['text', 'href', 'newTab'], 'linkGlobal.'));
+      eachItem(body.dates, 'dates', KEYS.calendar.nested.dates, errors);
+      errors.push(...unknownFields(body.linkGlobal, KEYS.calendar.nested.linkGlobal, 'linkGlobal.'));
       const dates = Array.isArray(body.dates)
         ? body.dates.map((date) => (isObject(date)
           ? {
@@ -87,9 +92,9 @@ const FORMATS = {
   tinder: {
     resource: 'tinders',
     noun: 'tinder',
-    fields: [...COMMON_FIELDS, 'label', 'title', 'cards', 'legend'],
+    fields: KEYS.tinder.root,
     parse(body, errors) {
-      eachItem(body.cards, 'cards', ['label', 'title'], errors);
+      eachItem(body.cards, 'cards', KEYS.tinder.nested.cards, errors);
       // Légende du dashboard : un texte fourni est affiché sous les cartes.
       let legend;
       if (body.legend !== undefined && body.legend !== null && body.legend !== '') {
@@ -127,15 +132,15 @@ const FORMATS = {
   quiz: {
     resource: 'quizzes',
     noun: 'quiz',
-    fields: [...COMMON_FIELDS, 'title', 'questions', 'conclusion'],
+    fields: KEYS.quiz.root,
     parse(body, errors) {
-      eachItem(body.questions, 'questions', ['text', 'answers', 'hint', 'img', 'hidePercent'], errors);
+      eachItem(body.questions, 'questions', KEYS.quiz.nested.questions, errors);
       if (Array.isArray(body.questions)) {
         body.questions.forEach((question, index) => {
-          if (isObject(question)) eachItem(question.answers, `questions[${index}].answers`, ['text', 'isCorrect'], errors);
+          if (isObject(question)) eachItem(question.answers, `questions[${index}].answers`, KEYS.quiz.nested['questions.answers'], errors);
         });
       }
-      errors.push(...unknownFields(body.conclusion, ['text1', 'text2', 'text3'], 'conclusion.'));
+      errors.push(...unknownFields(body.conclusion, KEYS.quiz.nested.conclusion, 'conclusion.'));
       return { theme: body.theme, brand: body.brand, title: body.title, questions: body.questions, conclusion: body.conclusion };
     },
     validate: validateQuiz,

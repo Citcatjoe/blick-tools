@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Blick Tools API
-  version: 1.2.0
+  version: 1.3.0
   description: |
     API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
     Formats : sondages (`/polls`, création, lecture, correction des textes) ; calendriers,
@@ -381,6 +381,29 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '405': { description: '`METHOD_NOT_ALLOWED` (`Allow: POST`).' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /widget-types:
+    get:
+      operationId: getWidgetTypes
+      summary: Description des formulaires de création (spec 004)
+      description: |
+        Formats ouverts à l'API, dans l'ordre d'affichage du Hub, avec pour chaque champ de la
+        requête : type de saisie, libellé et exemple en français, obligation, bornes. Source :
+        `WIDGET_FORMS` de `@rms/widget-model`. Les champs acceptés par les créations sont ceux de
+        cette description, plus `theme`, `brand` et `author`. Les règles restent celles des
+        `POST` (erreurs `400`) ; des tests vérifient que la description les reflète.
+      responses:
+        '200':
+          description: Description des formats.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [formats]
+                properties:
+                  formats: { type: array, items: { $ref: '#/components/schemas/WidgetForm' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '405': { description: '`METHOD_NOT_ALLOWED` (`Allow: GET`).' }
 components:
   securitySchemes:
     googleIdToken:
@@ -665,6 +688,45 @@ components:
         views: { type: integer }
         theme: { type: string }
         brand: { type: string }
+    WidgetForm:
+      type: object
+      required: [type, resource, name, noun, titleField, brands, fields]
+      properties:
+        type: { type: string, example: tinder, description: 'Type du widget (`?<type>Doc=` de l''URL d''embed).' }
+        resource: { type: string, example: tinders, description: 'Ressource de création et de lecture.' }
+        name: { type: string, example: Tinder }
+        noun: { type: string, example: tinder, description: 'Nom dans une phrase (« Création du tinder »).' }
+        titleField: { type: string, example: title, description: 'Champ qui identifie le widget (titre de l''Embeddable).' }
+        brands: { type: array, items: { type: string }, example: [blick] }
+        fields: { type: array, items: { $ref: '#/components/schemas/FormField' } }
+    FormField:
+      type: object
+      required: [kind]
+      properties:
+        key: { type: string, description: 'Nom du champ dans la requête (absent pour l''élément texte d''une liste, `item`).' }
+        kind:
+          type: string
+          enum: [text, textarea, url, datetime, checkbox, image, choice, list, group]
+          description: |
+            `datetime` : date et heure suisses sans décalage (`2026-12-20T20:45`) ; `image` : URL https,
+            de préférence rendue par `POST /images` ; `list` : `fields` (objets) ou `item` (textes) ;
+            `group` : objet `fields`.
+        label: { type: string }
+        placeholder: { type: string }
+        required: { type: boolean }
+        default: { description: 'Valeur proposée au départ.' }
+        options:
+          type: array
+          items: { type: object, properties: { value: {}, label: { type: string } } }
+        emptyLabel: { type: string, description: 'Choix « vide » (champ absent de la requête), ex. « Toutes ».' }
+        min: { type: integer }
+        max: { type: [integer, 'null'], description: '`null` : sans maximum.' }
+        itemLabel: { type: string, example: Carte }
+        addLabel: { type: string, example: Ajouter une date }
+        correct: { type: string, example: isCorrect, description: 'Clé booléenne vraie sur un seul élément ; erreur sur `<parent>.correctAnswer`.' }
+        optional: { type: boolean, description: 'Groupe facultatif : absent si tous ses textes sont vides.' }
+        item: { $ref: '#/components/schemas/FormField' }
+        fields: { type: array, items: { $ref: '#/components/schemas/FormField' } }
     Problem:
       type: object
       required: [status, code, title]

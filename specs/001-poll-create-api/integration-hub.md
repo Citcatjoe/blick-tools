@@ -184,6 +184,15 @@ règles sont celles du dashboard (module partagé) : un widget valide dans l'un 
   `404`.
 - `embedUrl` : `…/bl-tools-client-<type>/?<type>Doc=<id>` (sans `&brand=`).
 
+## Description des formulaires (spec `004-hub-form-descriptions`)
+
+`GET /widget-types` (même authentification) rend la description des formats ouverts à l'API :
+pour chaque champ de la requête, son type de saisie, son libellé et son exemple en français, s'il
+est obligatoire, ses bornes (schéma `WidgetForm` du contrat). Le Hub construit ses formulaires à
+partir d'elle au lieu de recopier les règles : un champ ajouté ou une borne changée dans
+`@rms/widget-model` arrive dans le Hub sans changer son code. Les règles restent celles des
+`POST` : leurs erreurs `400` s'affichent sous le champ désigné par `errors[].field`.
+
 ## Portée du Hub par format
 
 Le Hub prépare l'intégration d'un Blick Tools dans l'article Ring et assure les corrections
@@ -192,7 +201,7 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 | Format | Création Hub | Correction Hub | Détail (dashboard) |
 |---|---|---|---|
 | **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
-| **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | aucune (lecture seule) | tout (`?edit=<id>`) |
+| **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | aucune sur le contenu ; le bloc se déplace ou se retire de l'article | tout (`?edit=<id>`) |
 | **Tous les autres** (`teaser`, `folder`, `testimony`, `potm`, `prono`, `facts`, `natinotes`) | non | non | détectés dans l'article, édition dans le dashboard (`?edit=<id>`) |
 
 > **Publication automatique** : pour le flux de création de sondage en 1 clic, l'Embeddable Ring

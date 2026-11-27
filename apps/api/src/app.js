@@ -2,6 +2,7 @@ import { ApiError, sendJson, sendProblem } from './errors.js';
 import { parseCreatePollRequest, parseIdempotencyKey, createPoll, getPoll, updatePoll } from './polls.js';
 import { RESOURCE_TYPES, parseCreateRequest, createWidget, getWidget } from './widgets.js';
 import { uploadImage } from './uploads.js';
+import { WIDGET_FORMS } from '@rms/widget-model';
 
 export const MAX_BODY_BYTES = 64 * 1024;
 
@@ -73,6 +74,17 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
     let caller;
     try {
       const { pathname } = new URL(req.url, 'http://localhost');
+      // Description des formulaires de création (spec 004) : le Hub construit ses formulaires à partir d'elle.
+      if (pathname === '/widget-types') {
+        if (req.method !== 'GET') {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: 'GET' } });
+        }
+        caller = await verifyCaller(req.headers.authorization);
+        sendJson(res, 200, { formats: WIDGET_FORMS });
+        log('INFO', 'widget types read', { caller: caller.email, status: 200, durationMs: Date.now() - startedAt });
+        return;
+      }
+
       const byId = pathname.match(/^\/polls\/([^/]+)$/);
       const widgetRoute = pathname.match(/^\/(calendars|tinders|quizzes)(?:\/([^/]+))?$/);
 

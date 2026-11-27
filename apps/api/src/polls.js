@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { validatePoll, validatePollEdits, buildPollSaveData, transformWidgetData, buildEmbedUrl } from '@rms/widget-model';
+import { validatePoll, validatePollEdits, buildPollSaveData, transformWidgetData, buildEmbedUrl, requestFieldKeys } from '@rms/widget-model';
 import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
 
 export const DEFAULT_AUTHOR = 'Hub Rédaction';
 
-const REQUEST_FIELDS = new Set(['question', 'answers', 'theme', 'brand', 'author']);
+// Champs acceptés : ceux de la description des formulaires (spec 004), seule liste.
+const REQUEST_FIELDS = new Set(requestFieldKeys('poll').root);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const IDEMPOTENCY_KEY = /^[\x21-\x7E]{1,255}$/;
 
