@@ -61,6 +61,13 @@ Toutes les apps sauf `api` sont des projets **Vite + React 19 indépendants**, m
 
 ⚠️ **Sous-dépôts git imbriqués** : les **11 apps** (les 10 clientes + `backend`) contiennent chacune leur propre `.git` — héritage des repos séparés d'avant le monorepo. Ce ne sont pas de simples dossiers : un `git add` à la racine ne les suit pas comme du code normal. **Vérifier dans quel repo on se trouve avant de committer.** Seules `docs`, `utils` et `api` sont de vrais dossiers du repo racine (pas de `.git` propre).
 
+## Dépôt frère : Sidekick (Hub Rédaction)
+
+L'extension Chrome **Sidekick** (`../chrome-romandie-extension`, GitHub `thomasbassery-sys/chrome-romandie-extension`) crée et intègre des widgets dans les articles Ring par l'**API** (`apps/api`), via le relais de son backend (`backend/src/blick-tools.js`) et l'outil Box & iframes (`src/tools/blick-tools/`). Les deux dépôts sont menés dans la même conversation ; les règles communes (annonce avant toute modification ici, accord de César avant tout déploiement, ordre des changements à cheval sur les deux dépôts) sont dans `../chrome-romandie-extension/CLAUDE.md`.
+
+- **Toute contrainte sur un widget** (champ obligatoire, nombre d'éléments, format, marque) vit dans `packages/widget-model`, utilisé par le dashboard et l'API. Un formulaire du dashboard (`apps/backend/src/components/Form/*.jsx`) n'en ajoute jamais une de son côté : sinon un widget valide dans le dashboard ne l'est plus par l'API (cas du tinder à 3 cartes, corrigé en spec 003).
+- **Un changement du contrat de l'API ou des règles du modèle** se vérifie aussi côté Sidekick : formulaires de l'extension (`src/tools/blick-tools/`), relais et ses tests (`backend/`).
+
 ## Modèle de données Firestore (la règle d'or)
 
 Tout document de la collection `widgets` a **exactement 4 propriétés à la racine**, et jamais d'autres :
