@@ -59,15 +59,33 @@ test('calendrier : document 4 blocs (titre, dates horodatées, tous les élémen
   assert.equal(doc.stats.globalLinkClicks, undefined);
 });
 
+test('calendrier : options avancées d\'un ancien calendrier conservées au réenregistrement', () => {
+  const end = new Date('2026-12-18T17:00:00Z');
+  const legacy = { ...CAL, dates: [{ ...CAL.dates[0], end, showBadge: true, liveLinkEnabled: true, liveLinkUrl: ' https://live ' }] };
+  assert.deepEqual(validateCalendar(legacy), []);
+  const [date] = buildCalendarSaveData(legacy, { toTimestamp }).dates;
+  assert.deepEqual([date.scheduleEnd, date.showBadge, date.liveLinkExists, date.liveLinkUrl], [{ iso: end.toISOString() }, true, true, 'https://live']);
+  const off = buildCalendarSaveData({ ...legacy, dates: [{ ...legacy.dates[0], liveLinkEnabled: false }] }, { toTimestamp }).dates[0];
+  assert.deepEqual([off.liveLinkExists, off.liveLinkUrl], [false, '']);
+  assert.deepEqual(fields(validateCalendar({ ...CAL, dates: [{ ...CAL.dates[0], end: new Date('nope'), showBadge: 'oui' }] })), [
+    ['dates[0].end', 'invalid_value'],
+    ['dates[0].showBadge', 'invalid_type'],
+  ]);
+});
+
 // ---------- Tinder ----------
 
-const TIN = { theme: 'Suisse', label: ' Débat ', title: ' Pour ou contre ? ', cards: [{ label: 'A', title: 'Première' }, { label: 'B', title: 'Deuxième' }] };
+const TIN = { theme: 'Suisse', label: ' Débat ', title: ' Pour ou contre ? ', cards: [{ label: 'A', title: 'Première' }, { label: 'B', title: 'Deuxième' }, { label: 'C', title: 'Troisième' }] };
 
-test('validateTinder : 1 à 3 cartes, label et titre par carte', () => {
+test('validateTinder : exactement 3 cartes (comme le formulaire), label et titre par carte', () => {
   assert.deepEqual(validateTinder(TIN), []);
-  assert.deepEqual(fields(validateTinder({ ...TIN, cards: [] })), [['cards', 'too_few']]);
+  for (const count of [0, 1, 2]) {
+    const errors = validateTinder({ ...TIN, cards: TIN.cards.slice(0, count) });
+    assert.deepEqual(fields(errors), [['cards', 'too_few']], `${count} carte(s)`);
+    assert.equal(errors[0].message, 'Le tinder doit avoir exactement 3 cartes.');
+  }
   assert.deepEqual(fields(validateTinder({ ...TIN, cards: [1, 2, 3, 4].map(() => ({ label: 'x', title: 'y' })) })), [['cards', 'too_many']]);
-  assert.deepEqual(fields(validateTinder({ ...TIN, label: '', cards: [{ label: '', title: 'ok' }, { label: 'ok' }], legend: { display: true, txt: ' ' } })), [
+  assert.deepEqual(fields(validateTinder({ ...TIN, label: '', cards: [{ label: '', title: 'ok' }, { label: 'ok' }, TIN.cards[2]], legend: { display: true, txt: ' ' } })), [
     ['label', 'required'],
     ['cards[0].label', 'required'],
     ['cards[1].title', 'required'],
@@ -78,9 +96,9 @@ test('validateTinder : 1 à 3 cartes, label et titre par carte', () => {
 test('tinder : id par carte, votes à zéro par id, légende masquée', () => {
   const doc = transformWidgetData({ ...buildTinderSaveData(TIN), id: 't1', deleted: false }, { serverTimestamp });
   const ids = doc.data.tinderCards.map((card) => card.id);
-  assert.equal(new Set(ids).size, 2);
-  assert.deepEqual(doc.data.tinderCards.map(({ tinderCardLabel, tinderCardTitle }) => [tinderCardLabel, tinderCardTitle]), [['A', 'Première'], ['B', 'Deuxième']]);
-  assert.deepEqual(doc.stats.tinderVotes, { [ids[0]]: { yes: 0, no: 0 }, [ids[1]]: { yes: 0, no: 0 } });
+  assert.equal(new Set(ids).size, 3);
+  assert.deepEqual(doc.data.tinderCards.map(({ tinderCardLabel, tinderCardTitle }) => [tinderCardLabel, tinderCardTitle]), [['A', 'Première'], ['B', 'Deuxième'], ['C', 'Troisième']]);
+  assert.deepEqual(doc.stats.tinderVotes, Object.fromEntries(ids.map((id) => [id, { yes: 0, no: 0 }])));
   assert.deepEqual(doc.data.tinderLegend, { txt: '', display: false });
   assert.equal(doc.meta.title, 'Pour ou contre ?');
   assert.equal(doc.data.tinderLabel, 'Débat');
@@ -125,6 +143,10 @@ test('validateQuiz : 4 réponses, exactement une bonne, conclusions obligatoires
   ]);
   assert.deepEqual(fields(validateQuiz({ ...QUIZ, questions: [] })), [['questions', 'too_few']]);
   assert.deepEqual(fields(validateQuiz({ ...QUIZ, brand: 'pme' })), [['brand', 'invalid_value']]);
+  const withImage = (img) => fields(validateQuiz({ ...QUIZ, questions: [{ ...QUIZ.questions[0], img }] }));
+  assert.deepEqual(withImage(''), []);
+  assert.deepEqual(withImage('https://firebasestorage.googleapis.com/v0/b/x/o/quizs%2Fa.webp?alt=media&token=t'), []);
+  for (const bad of ['http://cdn/x.jpg', 'pas une url', 42]) assert.deepEqual(withImage(bad), [['questions[0].img', 'invalid_value']], String(bad));
 });
 
 test('quiz : id par question, compteurs par id, distribution 0..n', () => {

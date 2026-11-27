@@ -38,7 +38,7 @@ export function validateQuiz({ theme, title, questions, conclusion, brand } = {}
       }
       checkText(question.text, `${at}.text`, `Le texte de la question ${n}`, fail);
       checkOptionalText(question.hint, `${at}.hint`, `L'indice de la question ${n}`, fail);
-      checkOptionalText(question.img, `${at}.img`, `L'image de la question ${n}`, fail);
+      checkImageUrl(question.img, `${at}.img`, n, fail);
       if (!isMissing(question.hidePercent) && typeof question.hidePercent !== 'boolean') {
         fail(`${at}.hidePercent`, 'invalid_type', `Le masquage des pourcentages de la question ${n} doit être un booléen.`);
       }
@@ -69,6 +69,17 @@ export function validateQuiz({ theme, title, questions, conclusion, brand } = {}
 
   checkBrand(brand, BLICK_ONLY_BRANDS, fail);
   return errors;
+}
+
+// Image : absente, ou URL https (le dashboard ne produit que des URL de son Firebase Storage,
+// l'API importe toute image https puis la remplace par sa copie dans ce même Storage).
+function checkImageUrl(img, field, n, fail) {
+  if (isMissing(img)) return;
+  let ok = false;
+  try {
+    ok = typeof img === 'string' && new URL(img).protocol === 'https:';
+  } catch { /* URL invalide */ }
+  if (!ok) fail(field, 'invalid_value', `L'image de la question ${n} doit être une URL https.`);
 }
 
 /**

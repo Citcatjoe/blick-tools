@@ -27,12 +27,13 @@ liveLinkExists: false, liveLinkUrl: '' }` (forme du dashboard, options avancées
 |---|---|---|---|---|
 | `label` | string | oui | non vide | `data.tinderLabel` |
 | `title` | string | oui | non vide | `data.tinderTitle`, `meta.title` |
-| `cards` | array | oui | 1 à 3 | `data.tinderCards[]` |
+| `cards` | array | oui | exactement 3 (comme le formulaire — spec 003) | `data.tinderCards[]` |
 | `cards[i].label` | string | oui | non vide | `{ id, tinderCardLabel, tinderCardTitle }` |
 | `cards[i].title` | string | oui | non vide | |
+| `legend` | string | non | non vide = affichée (spec 003) | `data.tinderLegend` `{ txt, display: true }` |
 
-`data.tinderLegend = { txt: '', display: false }`. `stats` : `{ views: 0, tinderVotes: { [cardId]:
-{ yes: 0, no: 0 } } }`.
+Sans `legend` : `data.tinderLegend = { txt: '', display: false }`. `stats` : `{ views: 0,
+tinderVotes: { [cardId]: { yes: 0, no: 0 } } }`.
 
 ## 3. Quiz — `POST /quizzes`
 
@@ -45,7 +46,7 @@ liveLinkExists: false, liveLinkUrl: '' }` (forme du dashboard, options avancées
 | `questions[i].answers[j].text` | string | oui | non vide | |
 | `questions[i].hint` | string | non | rogné | `.hint` (`''`) |
 | `questions[i].hidePercent` | boolean | non | | `.hidePercent` (`false`) |
-| `questions[i].img` | string | non | URL https, image téléchargeable | `.img` = URL de la **copie** Storage (`''` si absente) |
+| `questions[i].img` | string | non | URL https : rendue par `POST /images` (copiée), déjà dans le Storage de l'environnement (gardée) ou publique (téléchargée) — spec 003 | `.img` = URL dans le Storage de l'environnement (`''` si absente) |
 | `conclusion.text1/2/3` | string | oui | non vides | `data.conclusion` |
 
 Chaque question reçoit un `id` (UUID). `stats` : `{ views: 0, statsGlobal: { scoreDistribution:
@@ -60,9 +61,16 @@ Chaque question reçoit un `id` (UUID). `stats` : `{ views: 0, statsGlobal: { sc
 
 ## 5. Erreurs de champ (`errors[].field`)
 
-`title`, `label`, `theme`, `brand`, `author`, `dates`, `dates[i].text`, `dates[i].start`,
+`title`, `label`, `legend`, `theme`, `brand`, `author`, `dates`, `dates[i].text`, `dates[i].start`,
 `nbElemsToShow`, `linkGlobal`, `cards`, `cards[i].label`, `cards[i].title`, `questions`,
 `questions[i].text`, `questions[i].answers`, `questions[i].answers[j].text`, `questions[i].correctAnswer`,
 `questions[i].hint`, `questions[i].img`, `conclusion.text1`, `conclusion.text2`,
 `conclusion.text3`. Codes : `required`, `invalid_type`, `invalid_value`, `too_few`, `too_many`,
 `unknown_field`.
+
+## 6. Image de quiz — `POST /images` (spec 003)
+
+Corps = fichier brut, `Content-Type` `image/jpeg|png|webp|gif`, ≤ 10 Mo ; format réel vérifié.
+Converti comme une image importée par URL, déposé sous `hub-uploads/<horodatage>_<uuid>.webp`
+(supprimé après 7 jours par la règle de cycle de vie du bucket). `201 { url }`. Erreurs : champ
+`image`, codes `invalid_type`, `too_large`, `invalid_value`.

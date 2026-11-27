@@ -9,6 +9,7 @@ import { createApp } from '../src/app.js';
 import { createCallerVerifier } from '../src/auth.js';
 import { AlreadyExistsError } from '../src/errors.js';
 import { ImageError, fetchImageSafely, isPublicAddress, toDashboardWebp, IMAGE_TARGET_BYTES } from '../src/images.js';
+import { UPLOAD_PREFIX, parseStorageUrl } from '../src/imageStore.js';
 import { parseDateTime } from '../src/dates.js';
 
 const AUDIENCE = 'https://blick-tools-api.test';
@@ -46,28 +47,38 @@ const store = {
   async get(id) { return docs.get(id) ?? null; },
 };
 
-// Images : téléchargement et conversion factices, stockage en mémoire.
+// Images : téléchargement factice ; conversion réelle sauf pour le contenu factice « image » ;
+// stockage en mémoire (objet → jeton), même forme d'URL que Firebase.
+const BUCKET = 'bucket';
+const storageUrl = (path, token = 't') => `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
 let fetched;
 let stored;
 let removed;
+let objects;
 const images = {
   async fetch(url) {
     fetched.push(url);
     if (url.includes('broken')) throw new ImageError("L'image n'a pas pu être téléchargée (HTTP 404).");
     return Buffer.from(url.includes('notimage') ? 'pas une image' : 'image');
   },
-  async convert(buffer) {
-    if (buffer.toString() === 'pas une image') throw new ImageError("Le fichier téléchargé n'est pas une image lisible.");
-    return Buffer.from('webp');
+  async convert(buffer, options) {
+    return buffer.toString() === 'image' ? Buffer.from('webp') : toDashboardWebp(buffer, options);
   },
 };
 const imageStore = {
   async put(webp, prefix) {
     const path = `${prefix}/${stored.length + 1}.webp`;
     stored.push(path);
-    return { url: `https://firebasestorage.googleapis.com/v0/b/bucket/o/${encodeURIComponent(path)}?alt=media&token=t`, path };
+    objects.set(path, 't');
+    return { url: storageUrl(path), path };
   },
-  async remove(path) { removed.push(path); },
+  async adopt(url, prefix) {
+    const location = parseStorageUrl(url, BUCKET);
+    if (!location) return null;
+    if (objects.get(location.path) !== location.token) throw new ImageError('Image introuvable dans le stockage Blick Tools.');
+    return location.path.startsWith(`${UPLOAD_PREFIX}/`) ? this.put(Buffer.from('webp'), prefix) : { url };
+  },
+  async remove(path) { removed.push(path); objects.delete(path); },
 };
 
 let server;
@@ -82,7 +93,7 @@ before(async () => {
 });
 after(() => server.close());
 beforeEach(() => {
-  docs = new Map(); nextId = 0; failNextCreate = false; fetched = []; stored = []; removed = [];
+  docs = new Map(); nextId = 0; failNextCreate = false; fetched = []; stored = []; removed = []; objects = new Map();
 });
 
 async function call(method, path, body, { token = 'hub', headers = {} } = {}) {
@@ -100,7 +111,7 @@ const CALENDAR = {
   dates: [{ text: 'Finale', complement: 'Lusail', start: '2026-12-20T20:45' }, { text: 'Demie', start: '2026-07-01T18:00:00Z' }],
   linkGlobal: { text: 'Programme', href: 'https://blick.ch', newTab: true },
 };
-const TINDER = { label: 'Débat', title: 'Pour ou contre ?', theme: 'Suisse', cards: [{ label: 'A', title: 'Un' }, { label: 'B', title: 'Deux' }] };
+const TINDER = { label: 'Débat', title: 'Pour ou contre ?', theme: 'Suisse', cards: [{ label: 'A', title: 'Un' }, { label: 'B', title: 'Deux' }, { label: 'C', title: 'Trois' }] };
 const answers = (correct) => ['3', '4', '5', '22'].map((text, i) => (i === correct ? { text, isCorrect: true } : { text }));
 const QUIZ = {
   title: 'Quiz', theme: 'Inter', author: 'jane@ringier.ch',
@@ -127,16 +138,30 @@ test('POST /calendars : 201, document de la fabrique partagée, heure suisse par
   assert.deepEqual(doc.stats, { views: 0, seeAllClicks: 0 });
 });
 
-test('POST /tinders : ids de cartes et votes par id', async () => {
+test('POST /tinders : ids de cartes et votes par id, légende facultative affichée', async () => {
   const res = await call('POST', '/tinders', TINDER);
   assert.equal(res.status, 201);
   assert.equal(res.json.embedUrl, `${BASE}tinder/?tinderDoc=auto1`);
   const doc = docs.get('auto1');
   const ids = doc.data.tinderCards.map((card) => card.id);
-  assert.equal(new Set(ids).size, 2);
+  assert.equal(new Set(ids).size, 3);
   assert.deepEqual(doc.stats.tinderVotes, Object.fromEntries(ids.map((id) => [id, { yes: 0, no: 0 }])));
   const expected = transformWidgetData({ ...buildTinderSaveData({ ...TINDER, cards: TINDER.cards.map((c, i) => ({ ...c, id: ids[i] })) }), id: 'auto1', author: 'Hub Rédaction', deleted: false }, { serverTimestamp: () => TS });
   assert.deepEqual(doc, expected);
+  assert.equal((await call('GET', '/tinders/auto1')).json.legend, null);
+
+  const withLegend = await call('POST', '/tinders', { ...TINDER, legend: ' Glisse à droite pour oui ' });
+  assert.deepEqual(docs.get(withLegend.json.id).data.tinderLegend, { txt: 'Glisse à droite pour oui', display: true });
+  assert.equal((await call('GET', `/tinders/${withLegend.json.id}`)).json.legend, 'Glisse à droite pour oui');
+});
+
+test('POST /tinders : 1 ou 2 cartes refusées comme dans le dashboard', async () => {
+  for (const count of [1, 2]) {
+    const res = await call('POST', '/tinders', { ...TINDER, cards: TINDER.cards.slice(0, count) });
+    assert.equal(res.status, 400);
+    assert.deepEqual(res.json.errors, [{ field: 'cards', code: 'too_few', message: 'Le tinder doit avoir exactement 3 cartes.' }]);
+  }
+  assert.equal(docs.size, 0);
 });
 
 test('POST /quizzes : image copiée dans le Storage, URL d\'origine jamais stockée', async () => {
@@ -174,16 +199,16 @@ test('400 groupé par format, avec champs imbriqués inconnus et marque pme refu
     ['brand', 'invalid_value'],
   ]);
 
-  const tin = await call('POST', '/tinders', { ...TINDER, cards: [{ label: 'A', title: 'x', id: 'mine' }, ...[1, 2, 3].map(() => ({ label: 'a', title: 'b' }))], legend: 'x' });
-  assert.deepEqual(fields(tin), [['legend', 'unknown_field'], ['cards[0].id', 'unknown_field'], ['cards', 'too_many']]);
+  const tin = await call('POST', '/tinders', { ...TINDER, cards: [{ label: 'A', title: 'x', id: 'mine' }, ...[1, 2, 3].map(() => ({ label: 'a', title: 'b' }))], legend: 42 });
+  assert.deepEqual(fields(tin), [['cards[0].id', 'unknown_field'], ['legend', 'invalid_type'], ['cards', 'too_many']]);
 
   const quiz = await call('POST', '/quizzes', { ...QUIZ, questions: [{ text: 'Q', answers: answers(1).slice(0, 3) }, { text: 'Q', answers: [...answers(0).slice(0, 3), { text: 'x', isCorrect: true }], img: 'http://insecure/a.jpg' }], conclusion: { text1: 'a' } });
   assert.deepEqual(fields(quiz), [
     ['questions[0].answers', 'invalid_value'],
+    ['questions[1].img', 'invalid_value'],
     ['questions[1].correctAnswer', 'invalid_value'],
     ['conclusion.text2', 'required'],
     ['conclusion.text3', 'required'],
-    ['questions[1].img', 'invalid_value'],
   ]);
   assert.equal(docs.size, 0);
   assert.deepEqual(fetched, []);
@@ -221,6 +246,86 @@ test('401 / 403 / 404 / 405 / 415 sur les nouvelles ressources', async () => {
   assert.equal(patch.headers.get('allow'), 'GET');
   const form = await fetch(`${url}/calendars`, { method: 'POST', headers: { Authorization: 'Bearer hub', 'Content-Type': 'text/plain' }, body: 'x' });
   assert.equal(form.status, 415);
+});
+
+// ---------------------------------------------------------------- envoi d'image (POST /images)
+
+const upload = async (body, contentType, { token = 'hub' } = {}) => {
+  const response = await fetch(`${url}/images`, {
+    method: 'POST',
+    headers: { ...(token && { Authorization: `Bearer ${token}` }), ...(contentType && { 'Content-Type': contentType }) },
+    body,
+  });
+  return { status: response.status, headers: response.headers, json: await response.json() };
+};
+const photo = () => sharp({ create: { width: 2400, height: 1600, channels: 3, background: '#0a7' } }).jpeg().toBuffer();
+
+test('POST /images : 201 { url }, image convertie comme le dashboard, déposée sous le préfixe des envois', async () => {
+  const res = await upload(await photo(), 'image/jpeg');
+  assert.equal(res.status, 201);
+  assert.deepEqual(res.json, { url: storageUrl(`${UPLOAD_PREFIX}/1.webp`) });
+  assert.deepEqual(stored, [`${UPLOAD_PREFIX}/1.webp`]);
+
+  const gif = await sharp({ create: { width: 10, height: 10, channels: 3, background: '#000' } }).gif().toBuffer();
+  assert.equal((await upload(gif, 'image/gif')).status, 201);
+});
+
+test('POST /images : type refusé, trop lourd, illisible → 400 sur « image »', async () => {
+  const imageErrors = (res) => [res.status, ...res.json.errors.map(({ field, code }) => `${field}:${code}`)];
+  const tiff = await sharp({ create: { width: 10, height: 10, channels: 3, background: '#000' } }).tiff().toBuffer();
+  assert.deepEqual(imageErrors(await upload(tiff, 'image/tiff')), [400, 'image:invalid_type']);
+  assert.deepEqual(imageErrors(await upload(tiff, 'image/png')), [400, 'image:invalid_type'], 'format réel vérifié');
+  assert.deepEqual(imageErrors(await upload('<html></html>', 'image/jpeg')), [400, 'image:invalid_type']);
+  assert.deepEqual(imageErrors(await upload(Buffer.alloc(0), 'image/jpeg')), [400, 'image:invalid_type']);
+  assert.deepEqual(imageErrors(await upload(await photo(), undefined)), [400, 'image:invalid_type']);
+
+  const tooLarge = await upload(Buffer.alloc(10 * 1024 * 1024 + 1), 'image/jpeg');
+  assert.deepEqual(imageErrors(tooLarge), [400, 'image:too_large']);
+  assert.equal(tooLarge.json.errors[0].message, "L'image dépasse 10 Mo.");
+
+  const noisy = Buffer.alloc(600 * 400 * 3);
+  for (let i = 0; i < noisy.length; i++) noisy[i] = (i * 7919) % 251;
+  const jpeg = await sharp(noisy, { raw: { width: 600, height: 400, channels: 3 } }).jpeg().toBuffer();
+  assert.deepEqual(imageErrors(await upload(jpeg.subarray(0, jpeg.length / 2), 'image/jpeg')), [400, 'image:invalid_value'], 'JPEG tronqué');
+  assert.deepEqual(stored, []);
+});
+
+test('POST /images : 401 sans jeton, 403 hors liste blanche, 405 hors POST, rien de déposé', async () => {
+  assert.equal((await upload(await photo(), 'image/jpeg', { token: null })).status, 401);
+  assert.equal((await upload(await photo(), 'image/jpeg', { token: 'stranger' })).status, 403);
+  const get = await fetch(`${url}/images`, { headers: { Authorization: 'Bearer hub' } });
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get('allow'), 'POST');
+  assert.deepEqual(stored, []);
+});
+
+test('POST /quizzes : image envoyée par POST /images copiée sans téléchargement, image du Storage gardée', async () => {
+  const sent = await upload(await photo(), 'image/jpeg');
+  objects.set('quizs/dashboard.webp', 't');
+  const res = await call('POST', '/quizzes', {
+    ...QUIZ,
+    questions: [{ ...QUIZ.questions[0], img: sent.json.url }, { ...QUIZ.questions[1], img: storageUrl('quizs/dashboard.webp') }],
+  });
+  assert.equal(res.status, 201);
+  assert.deepEqual(fetched, []);
+  const { questions } = docs.get(res.json.id).data;
+  assert.equal(questions[0].img, storageUrl('quizs/2.webp'), 'copie sous quizs/, indépendante de l\'envoi');
+  assert.equal(questions[1].img, storageUrl('quizs/dashboard.webp'));
+
+  const expired = await call('POST', '/quizzes', { ...QUIZ, questions: [{ ...QUIZ.questions[0], img: storageUrl(`${UPLOAD_PREFIX}/expire.webp`) }] });
+  assert.deepEqual(fields(expired), [['questions[0].img', 'invalid_value']]);
+  const wrongToken = await call('POST', '/quizzes', { ...QUIZ, questions: [{ ...QUIZ.questions[0], img: storageUrl('quizs/dashboard.webp', 'devine') }] });
+  assert.deepEqual(fields(wrongToken), [['questions[0].img', 'invalid_value']]);
+});
+
+test('parseStorageUrl : seules les URL de téléchargement du bucket de l\'environnement', () => {
+  assert.deepEqual(parseStorageUrl(storageUrl('hub-uploads/a b.webp', 'k'), BUCKET), { path: 'hub-uploads/a b.webp', token: 'k' });
+  for (const other of [
+    'https://firebasestorage.googleapis.com/v0/b/autre/o/quizs%2Fa.webp?alt=media&token=t',
+    'https://evil.example/v0/b/bucket/o/quizs%2Fa.webp?token=t',
+    'http://firebasestorage.googleapis.com/v0/b/bucket/o/quizs%2Fa.webp?token=t',
+    'pas une url',
+  ]) assert.equal(parseStorageUrl(other, BUCKET), null, other);
 });
 
 // ---------------------------------------------------------------- idempotence
@@ -268,7 +373,7 @@ test('GET : projections par format avec compteurs, autre format → 404', async 
   const tinDoc = docs.get(tin.json.id);
   tinDoc.stats.tinderVotes[tinDoc.data.tinderCards[1].id] = { yes: 3, no: 1 };
   const gotTin = await call('GET', `/tinders/${tin.json.id}`);
-  assert.deepEqual(gotTin.json.cards.map(({ label, yes, no }) => [label, yes, no]), [['A', 0, 0], ['B', 3, 1]]);
+  assert.deepEqual(gotTin.json.cards.map(({ label, yes, no }) => [label, yes, no]), [['A', 0, 0], ['B', 3, 1], ['C', 0, 0]]);
 
   const quiz = await call('POST', '/quizzes', QUIZ);
   const quizDoc = docs.get(quiz.json.id);

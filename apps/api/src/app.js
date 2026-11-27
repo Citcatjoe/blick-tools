@@ -1,6 +1,7 @@
 import { ApiError, sendJson, sendProblem } from './errors.js';
 import { parseCreatePollRequest, parseIdempotencyKey, createPoll, getPoll, updatePoll } from './polls.js';
 import { RESOURCE_TYPES, parseCreateRequest, createWidget, getWidget } from './widgets.js';
+import { uploadImage } from './uploads.js';
 
 export const MAX_BODY_BYTES = 64 * 1024;
 
@@ -61,8 +62,10 @@ function readJsonBody(req) {
  *
  * @param {{ verifyCaller: (authorization?: string) => Promise<{ email: string }>,
  *   store: object, clientBaseUrl: string, log?: typeof logToStdout,
- *   images?: { fetch: (url: string) => Promise<Buffer>, convert: (buffer: Buffer) => Promise<Buffer> },
- *   imageStore?: { put: (webp: Buffer, prefix: string) => Promise<{ url: string, path: string }>, remove: (path: string) => Promise<void> } }} deps
+ *   images?: { fetch: (url: string) => Promise<Buffer>, convert: (buffer: Buffer, options?: { formats?: string[] }) => Promise<Buffer> },
+ *   imageStore?: { put: (webp: Buffer, prefix: string) => Promise<{ url: string, path: string }>,
+ *     adopt: (url: string, prefix: string) => Promise<{ url: string, path?: string } | null>,
+ *     remove: (path: string) => Promise<void> } }} deps
  */
 export function createApp({ verifyCaller, store, clientBaseUrl, images, imageStore, log = logToStdout }) {
   return async function handleRequest(req, res) {
@@ -103,6 +106,24 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
           widgetId: result.body.id,
           status: result.status,
           idempotent: Boolean(idempotencyKey),
+          durationMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      if (pathname === '/images') {
+        if (req.method !== 'POST') {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: 'POST' } });
+        }
+        caller = await verifyCaller(req.headers.authorization);
+        const upload = await uploadImage(req, { images, imageStore });
+        sendJson(res, 201, { url: upload.url });
+        log('INFO', 'image uploaded', {
+          caller: caller.email,
+          path: upload.path,
+          receivedBytes: upload.receivedBytes,
+          storedBytes: upload.storedBytes,
+          status: 201,
           durationMs: Date.now() - startedAt,
         });
         return;

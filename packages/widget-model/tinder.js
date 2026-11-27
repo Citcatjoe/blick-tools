@@ -2,7 +2,8 @@
 
 import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkText, checkTheme, errorCollector, isBlank, isMissing, newId, trimOrEmpty } from './common.js';
 
-export const TINDER_MAX_CARDS = 3;
+// Le formulaire du dashboard affiche toujours 3 cartes, sans ajout ni retrait.
+export const TINDER_CARDS = 3;
 
 /**
  * Toutes les violations, dans l'ordre du dashboard (rubrique, label, titre, cartes, légende) puis
@@ -19,14 +20,15 @@ export function validateTinder({ theme, label, title, cards, legend, brand } = {
   checkText(label, 'label', 'Le label du tinder', fail);
   checkText(title, 'title', 'Le titre du tinder', fail);
 
+  const countMessage = `Le tinder doit avoir exactement ${TINDER_CARDS} cartes.`;
   if (isMissing(cards)) {
-    fail('cards', 'required', 'Au moins une carte est nécessaire.');
+    fail('cards', 'required', countMessage);
   } else if (!Array.isArray(cards)) {
     fail('cards', 'invalid_type', 'Les cartes doivent être une liste.');
-  } else if (cards.length === 0) {
-    fail('cards', 'too_few', 'Au moins une carte est nécessaire.');
-  } else if (cards.length > TINDER_MAX_CARDS) {
-    fail('cards', 'too_many', `Au maximum ${TINDER_MAX_CARDS} cartes.`);
+  } else if (cards.length < TINDER_CARDS) {
+    fail('cards', 'too_few', countMessage);
+  } else if (cards.length > TINDER_CARDS) {
+    fail('cards', 'too_many', countMessage);
   } else {
     cards.forEach((card, index) => {
       if (!card || typeof card !== 'object' || Array.isArray(card)) {

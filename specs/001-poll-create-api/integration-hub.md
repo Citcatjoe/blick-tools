@@ -151,25 +151,34 @@ Même authentification, liste blanche, `Idempotency-Key` (propre à l'appelant *
 limite de corps et erreurs que `POST /polls`. Création et lecture seulement : toute correction se
 fait dans le dashboard (`?edit=<id>`). Marque : `blick` seulement (`pme` refusée). Rubrique
 obligatoire (`Suisse` · `Inter` · `Sport`). `author` facultatif (e-mail du journaliste). Champs
-détaillés : [`specs/002-hub-widgets-api/data-model.md`](../002-hub-widgets-api/data-model.md).
+détaillés : [`specs/002-hub-widgets-api/data-model.md`](../002-hub-widgets-api/data-model.md). Les
+règles sont celles du dashboard (module partagé) : un widget valide dans l'un l'est dans l'autre.
 
 | Format | Création | Lecture | Corps minimal |
 |---|---|---|---|
 | Calendrier | `POST /calendars` | `GET /calendars/{id}` | `{ "title", "theme", "dates": [{ "text", "start" }] }` |
-| Tinder | `POST /tinders` | `GET /tinders/{id}` | `{ "label", "title", "theme", "cards": [{ "label", "title" }] }` (1 à 3 cartes) |
+| Tinder | `POST /tinders` | `GET /tinders/{id}` | `{ "label", "title", "theme", "cards": [3 × { "label", "title" }] }` (exactement 3 cartes) |
 | Quiz | `POST /quizzes` | `GET /quizzes/{id}` | `{ "title", "theme", "questions": [{ "text", "answers": [4 × { "text", "isCorrect"? }] }], "conclusion": { "text1", "text2", "text3" } }` |
 
 - **Calendrier** : `start` en ISO 8601. Avec décalage (`2026-12-20T20:45:00+01:00`, `…Z`) →
   respecté ; sans (`2026-12-20T20:45`) → heure suisse. Champs facultatifs : `complement` par date,
   `nbElemsToShow` (1–10, absent = toutes), `linkGlobal: { text, href, newTab? }` (texte et URL
   ensemble, `href` en `http(s)://`).
-- **Tinder** : chaque carte reçoit un id ; votes `{ yes, no }` par carte.
+- **Tinder** : exactement 3 cartes (1 ou 2 → `400` `cards` / `too_few`) ; chaque carte reçoit un
+  id ; votes `{ yes, no }` par carte. `legend` facultative (texte affiché sous les cartes).
 - **Quiz** : exactement 4 réponses et **une** `isCorrect: true` par question ; trois conclusions
-  obligatoires ; `hint` et `hidePercent` facultatifs ; `img` facultative = **URL https publique**.
-  L'API télécharge l'image (≤ 10 Mo, 10 s), la convertit comme le dashboard et en stocke une copie
-  chez Blick Tools : l'URL d'origine peut disparaître ensuite. Image injoignable ou illisible →
-  `400` sur `questions[i].img`, rien n'est créé. Prévoir un délai d'appel plus long (≈ 30 s) pour
-  un quiz avec plusieurs images.
+  obligatoires ; `hint` et `hidePercent` facultatifs ; `img` facultative, URL https :
+  - **fichier choisi par le journaliste** : l'envoyer d'abord à `POST /images` (ci-dessous) et
+    mettre l'`url` rendue dans `img` ;
+  - **URL publique** : l'API télécharge l'image (≤ 10 Mo, 10 s), la convertit comme le dashboard
+    et en stocke une copie chez Blick Tools ; l'URL d'origine peut disparaître ensuite.
+  Image injoignable, illisible ou envoi expiré → `400` sur `questions[i].img`, rien n'est créé.
+  Prévoir un délai d'appel plus long (≈ 30 s) pour un quiz avec plusieurs images à télécharger.
+- **`POST /images`** : corps = **le fichier brut** (ni JSON ni multipart), `Content-Type`
+  `image/jpeg`, `image/png`, `image/webp` ou `image/gif`, ≤ 10 Mo ; même authentification.
+  `201 { "url" }`. Erreurs `400 VALIDATION_FAILED`, champ `image` : `invalid_type` (pas une image
+  ou format refusé — le format réel est vérifié), `too_large`, `invalid_value` (illisible). Un
+  envoi qu'aucun quiz n'utilise est supprimé après **7 jours** ; un quiz garde sa propre copie.
 - **Lecture** : contenu + compteurs (`views`, `seeAllClicks` ; votes `yes`/`no` par carte ;
   `correct`/`incorrect` par question, `plays`, `scoreDistribution`). Un id d'un autre format →
   `404`.

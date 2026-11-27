@@ -17,11 +17,15 @@ export const IMAGE_TARGET_BYTES = 75 * 1024;
 export const IMAGE_MIN_DIMENSION = 480;
 export const IMAGE_USER_AGENT = 'BlickToolsAPI/1.0 (+https://www.blick.ch; import d\'images de quiz)';
 
-/** Erreur d'image imputable à l'URL fournie (→ 400 sur le champ de l'image). */
+/**
+ * Erreur d'image imputable à l'appelant (→ 400 sur le champ de l'image). `code` : `invalid_type`
+ * (pas une image, ou format refusé), `too_large`, `invalid_value` (le reste, dont image illisible).
+ */
 export class ImageError extends Error {
-  constructor(message) {
+  constructor(message, code = 'invalid_value') {
     super(message);
     this.name = 'ImageError';
+    this.code = code;
   }
 }
 
@@ -90,7 +94,7 @@ function getOnce(url, { maxBytes, timeoutMs, request }) {
       }
       if (Number(headers['content-length']) > maxBytes) {
         res.destroy();
-        return reject(new ImageError('L\'image dépasse 10 Mo.'));
+        return reject(new ImageError('L\'image dépasse 10 Mo.', 'too_large'));
       }
       const chunks = [];
       let size = 0;
@@ -98,7 +102,7 @@ function getOnce(url, { maxBytes, timeoutMs, request }) {
         size += chunk.length;
         if (size > maxBytes) {
           res.destroy();
-          reject(new ImageError('L\'image dépasse 10 Mo.'));
+          reject(new ImageError('L\'image dépasse 10 Mo.', 'too_large'));
           return;
         }
         chunks.push(chunk);
@@ -135,9 +139,21 @@ export async function fetchImageSafely(rawUrl, {
  * ≤ 1928 px sans agrandissement, WebP à qualité décroissante ; si la cible n'est toujours pas
  * atteinte, réduction des dimensions par paliers (comme la bibliothèque du dashboard), jusqu'à
  * 480 px au plus petit.
+ * @param {Buffer} input
+ * @param {{ formats?: string[] }} [options] formats `sharp` admis (tous si absent)
  * @returns {Promise<Buffer>}
  */
-export async function toDashboardWebp(input) {
+export async function toDashboardWebp(input, { formats } = {}) {
+  let format;
+  try {
+    ({ format } = await sharp(input).metadata());
+  } catch {
+    throw new ImageError("Le fichier n'est pas une image.", 'invalid_type');
+  }
+  if (formats && !formats.includes(format)) {
+    throw new ImageError(`Format d'image refusé (${format}) : JPEG, PNG, WebP ou GIF attendu.`, 'invalid_type');
+  }
+
   let width;
   let height;
   try {
@@ -145,7 +161,7 @@ export async function toDashboardWebp(input) {
     input = oriented.data;
     ({ width, height } = oriented.info);
   } catch {
-    throw new ImageError("Le fichier téléchargé n'est pas une image lisible.");
+    throw new ImageError("L'image est illisible (fichier corrompu ou incomplet).");
   }
 
   let maxSide = Math.min(IMAGE_MAX_DIMENSION, Math.max(width, height));

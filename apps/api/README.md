@@ -4,7 +4,9 @@ API serveur à serveur, déployée sur Cloud Run. Premier appelant : backend **H
 
 - Contrat : [`specs/001-poll-create-api/contracts/openapi.yaml`](../../specs/001-poll-create-api/contracts/openapi.yaml)
 - Spec, décisions, modèle : [`specs/001-poll-create-api/`](../../specs/001-poll-create-api/) (sondages),
-  [`specs/002-hub-widgets-api/`](../../specs/002-hub-widgets-api/) (calendriers, tinders, quiz)
+  [`specs/002-hub-widgets-api/`](../../specs/002-hub-widgets-api/) (calendriers, tinders, quiz),
+  [`specs/003-hub-parity-images/`](../../specs/003-hub-parity-images/) (mêmes règles que le dashboard,
+  envoi d'image)
 - Documents produits par la même fabrique que le dashboard : [`@rms/widget-model`](../../packages/widget-model/)
 
 ## `POST /polls` en bref
@@ -37,6 +39,7 @@ Calendriers, tinders et quiz (création et lecture, même auth ; détails :
 POST /calendars   GET /calendars/{id}
 POST /tinders     GET /tinders/{id}
 POST /quizzes     GET /quizzes/{id}    (images : URL https copiée dans le Storage de l'environnement)
+POST /images      corps = fichier brut (JPEG/PNG/WebP/GIF ≤ 10 Mo) → 201 { url } pour questions[i].img
 ```
 
 ## Développement
@@ -89,13 +92,23 @@ Compte de service de l'API : `api-blicktools-ecriture@<projet>.iam.gserviceaccou
 
 - *Utilisateur Cloud Datastore* (`roles/datastore.user`) sur le projet ;
 - *Administrateur des objets Storage* (`roles/storage.objectAdmin`) sur le **seul bucket** de
-  l'environnement (images de quiz : création, jeton de téléchargement, suppression si la création
-  échoue). Jamais au niveau du projet :
+  l'environnement (images de quiz : création, lecture des métadonnées, copie d'un envoi, jeton de
+  téléchargement, suppression si la création échoue). Jamais au niveau du projet :
 
 ```bash
 BUCKET=$(grep '^VITE_FIREBASE_STORAGE_BUCKET=' .env | cut -d= -f2-)
 gcloud storage buckets add-iam-policy-binding gs://$BUCKET --project $P \
   --member serviceAccount:api-blicktools-ecriture@$P.iam.gserviceaccount.com --role roles/storage.objectAdmin
+```
+
+Envois `POST /images` : déposés sous `hub-uploads/`, supprimés par une règle de cycle de vie du
+bucket 7 jours après l'envoi (un quiz en garde sa copie sous `quizs/`). La règle est versionnée dans
+[`storage-lifecycle.json`](./storage-lifecycle.json) et ne touche que ce préfixe. `--lifecycle-file`
+**remplace** toute la configuration : vérifier d'abord qu'il n'y en a pas d'autre.
+
+```bash
+gcloud storage buckets describe gs://$BUCKET --project $P --format='default(lifecycle_config)'
+gcloud storage buckets update gs://$BUCKET --project $P --lifecycle-file=apps/api/storage-lifecycle.json
 ```
 
 Appelant autorisé : `hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com` (compte dédié

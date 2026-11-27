@@ -1,6 +1,7 @@
 // Règles et construction du widget `calendar`, communes au dashboard et à l'API.
 // Les options avancées des dates (fin, badge, lien live) sont masquées dans le dashboard
-// (`SHOW_ADVANCED_DATE_OPTIONS = false`) : elles ne sont ni validées ni exposées ici.
+// (`SHOW_ADVANCED_DATE_OPTIONS = false`) et absentes de l'API : elles ne sont que conservées
+// telles quelles quand le dashboard réenregistre un calendrier qui les porte déjà.
 
 import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkText, checkTheme, errorCollector, isBlank, isMissing, trimOrEmpty } from './common.js';
 
@@ -15,7 +16,9 @@ const isValidDate = (value) => value instanceof Date && !Number.isNaN(value.getT
  *
  * @param {{ theme?: unknown, title?: unknown, dates?: unknown, nbElemsToShow?: unknown,
  *   linkGlobal?: { text?: unknown, href?: unknown, newTab?: unknown }, brand?: unknown }} input
- *   `dates` : `[{ text, complement?, start: Date }]` — chaque écrivain convertit sa saisie en `Date`.
+ *   `dates` : `[{ text, complement?, start: Date, end?: Date | null, showBadge?: boolean,
+ *   liveLinkEnabled?: boolean, liveLinkUrl?: string }]` — chaque écrivain convertit sa saisie en
+ *   `Date`.
  */
 export function validateCalendar({ theme, title, dates, nbElemsToShow, linkGlobal, brand } = {}) {
   const { errors, fail } = errorCollector();
@@ -42,6 +45,15 @@ export function validateCalendar({ theme, title, dates, nbElemsToShow, linkGloba
       } else if (!isValidDate(date.start)) {
         fail(`dates[${index}].start`, 'invalid_value', `Le début de la date ${index + 1} est invalide.`);
       }
+      if (!isMissing(date.end) && !isValidDate(date.end)) {
+        fail(`dates[${index}].end`, 'invalid_value', `La fin de la date ${index + 1} est invalide.`);
+      }
+      for (const flag of ['showBadge', 'liveLinkEnabled']) {
+        if (!isMissing(date[flag]) && typeof date[flag] !== 'boolean') {
+          fail(`dates[${index}].${flag}`, 'invalid_type', `« ${flag} » de la date ${index + 1} doit être un booléen.`);
+        }
+      }
+      checkOptionalText(date.liveLinkUrl, `dates[${index}].liveLinkUrl`, `Le lien live de la date ${index + 1}`, fail);
     });
   }
 
@@ -92,10 +104,10 @@ export function buildCalendarSaveData({ title, dates, nbElemsToShow, linkGlobal,
       text: date.text.trim(),
       complement: trimOrEmpty(date.complement),
       scheduleStart: toTimestamp(date.start),
-      scheduleEnd: null,
-      showBadge: false,
-      liveLinkExists: false,
-      liveLinkUrl: '',
+      scheduleEnd: isMissing(date.end) ? null : toTimestamp(date.end),
+      showBadge: date.showBadge === true,
+      liveLinkExists: date.liveLinkEnabled === true,
+      liveLinkUrl: date.liveLinkEnabled === true ? trimOrEmpty(date.liveLinkUrl) : '',
     })),
     linkGlobalTxt: hasLink ? linkGlobal.text.trim() : '',
     linkGlobalHref: hasLink ? linkGlobal.href.trim() : '',

@@ -1,11 +1,15 @@
 openapi: 3.1.0
 info:
   title: Blick Tools API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
     Formats : sondages (`/polls`, création, lecture, correction des textes) ; calendriers,
-    tinders et quiz (`/calendars`, `/tinders`, `/quizzes`, création et lecture — spec 002).
+    tinders et quiz (`/calendars`, `/tinders`, `/quizzes`, création et lecture — spec 002) ;
+    envoi d'une image de quiz (`/images` — spec 003).
+
+    **Règles** : celles du dashboard, partagées (`@rms/widget-model`) — un widget valide dans le
+    dashboard est valide par l'API, et inversement.
 
     **Authentification** : `Authorization: Bearer <ID token Google>` émis pour le compte de
     service de l'appelant, avec `audience` = URL du service Blick Tools API de l'environnement
@@ -280,7 +284,8 @@ paths:
               label: Débat
               title: Pour ou contre ?
               theme: Suisse
-              cards: [{ label: Énergie, title: Nucléaire }, { label: Transports, title: Péage urbain }]
+              cards: [{ label: Énergie, title: Nucléaire }, { label: Transports, title: Péage urbain }, { label: Travail, title: Semaine de 4 jours }]
+              legend: Glisse à droite pour « pour », à gauche pour « contre ».
       responses: *createResponses
   /tinders/{id}:
     parameters: [{ $ref: '#/components/parameters/WidgetId' }]
@@ -302,10 +307,14 @@ paths:
       operationId: createQuiz
       summary: Créer un quiz
       description: |
-        Image de question facultative : URL https publique. L'API télécharge l'image (≤ 10 Mo,
-        10 s, hôtes privés refusés), la convertit comme le dashboard (WebP, ≤ 1928 px, ≈ 75 Ko)
-        et en stocke une copie dans le Firebase Storage de l'environnement ; l'URL d'origine
-        n'est jamais référencée. Image invalide → `400` sur `questions[i].img`, rien n'est créé.
+        Image de question facultative, URL https :
+        - URL rendue par `POST /images` (ou image déjà dans le Storage Blick Tools de
+          l'environnement) : pas de nouveau téléchargement ; un envoi est copié pour le quiz.
+          L'objet doit exister et porter le jeton de l'URL (un envoi expire après 7 jours).
+        - Toute autre URL publique : l'API télécharge l'image (≤ 10 Mo, 10 s, hôtes privés
+          refusés), la convertit comme le dashboard (WebP, ≤ 1928 px, ≈ 75 Ko) et en stocke une
+          copie ; l'URL d'origine n'est jamais référencée.
+        Image invalide ou introuvable → `400` sur `questions[i].img`, rien n'est créé.
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody:
         required: true
@@ -335,6 +344,42 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /images:
+    post:
+      operationId: uploadImage
+      summary: Envoyer l'image d'une question de quiz (fichier brut)
+      description: |
+        Corps = le fichier, sans JSON ni multipart. Même traitement qu'une image importée par URL
+        (WebP, ≤ 1928 px, ≈ 75 Ko). L'`url` rendue s'utilise telle quelle dans
+        `questions[i].img` de `POST /quizzes`. Un envoi jamais utilisé par un quiz est supprimé
+        après 7 jours ; un quiz en garde sa propre copie.
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+          image/gif: { schema: { type: string, format: binary } }
+      responses:
+        '201':
+          description: Image enregistrée.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: { type: string, format: uri, example: 'https://firebasestorage.googleapis.com/v0/b/<bucket>/o/hub-uploads%2F1764230400000_<uuid>.webp?alt=media&token=<uuid>' }
+        '400':
+          description: |
+            `VALIDATION_FAILED`, `errors: [{ field: "image", code, message }]` : `invalid_type`
+            (pas une image, ou format hors JPEG/PNG/WebP/GIF — le format réel est vérifié),
+            `too_large` (> 10 Mo), `invalid_value` (image illisible).
+          content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '405': { description: '`METHOD_NOT_ALLOWED` (`Allow: POST`).' }
         '503': { $ref: '#/components/responses/Unavailable' }
 components:
   securitySchemes:
@@ -530,13 +575,15 @@ components:
         title: { type: string }
         cards:
           type: array
-          minItems: 1
+          description: Exactement 3 cartes, comme le formulaire du dashboard (`too_few` / `too_many`).
+          minItems: 3
           maxItems: 3
           items:
             type: object
             additionalProperties: false
             required: [label, title]
             properties: { label: { type: string }, title: { type: string } }
+        legend: { type: string, description: Légende affichée sous les cartes (facultative). }
     Tinder:
       type: object
       properties:
@@ -554,6 +601,7 @@ components:
               title: { type: string }
               yes: { type: integer }
               no: { type: integer }
+        legend: { type: [string, 'null'], description: 'Légende affichée ; `null` si aucune.' }
         views: { type: integer }
         theme: { type: string }
         brand: { type: string }
@@ -648,8 +696,8 @@ components:
       properties:
         field:
           type: string
-          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `theme`, `brand`, `author`, `editor`, `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
+          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `legend`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `theme`, `brand`, `author`, `editor`, `image` (`POST /images`), `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
         code:
           type: string
-          enum: [required, invalid_type, invalid_value, too_few, too_many, unknown_field]
+          enum: [required, invalid_type, invalid_value, too_few, too_many, too_large, unknown_field]
         message: { type: string }

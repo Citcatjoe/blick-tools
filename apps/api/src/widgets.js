@@ -14,6 +14,7 @@ import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
 import { DEFAULT_AUTHOR, authorErrors } from './polls.js';
 import { parseDateTime } from './dates.js';
 import { ImageError } from './images.js';
+import { QUIZ_PREFIX } from './imageStore.js';
 
 const COMMON_FIELDS = ['theme', 'brand', 'author'];
 
@@ -86,10 +87,16 @@ const FORMATS = {
   tinder: {
     resource: 'tinders',
     noun: 'tinder',
-    fields: [...COMMON_FIELDS, 'label', 'title', 'cards'],
+    fields: [...COMMON_FIELDS, 'label', 'title', 'cards', 'legend'],
     parse(body, errors) {
       eachItem(body.cards, 'cards', ['label', 'title'], errors);
-      return { theme: body.theme, brand: body.brand, label: body.label, title: body.title, cards: body.cards };
+      // Légende du dashboard : un texte fourni est affiché sous les cartes.
+      let legend;
+      if (body.legend !== undefined && body.legend !== null && body.legend !== '') {
+        if (typeof body.legend === 'string') legend = { txt: body.legend, display: true };
+        else errors.push({ field: 'legend', code: 'invalid_type', message: 'La légende doit être une chaîne de caractères.' });
+      }
+      return { theme: body.theme, brand: body.brand, label: body.label, title: body.title, cards: body.cards, legend };
     },
     validate: validateTinder,
     build: (input) => buildTinderSaveData(input),
@@ -97,6 +104,7 @@ const FORMATS = {
       label: doc.data?.tinderLabel,
       title: doc.data?.tinderTitle,
       cards: (doc.data?.tinderCards ?? []).map((card) => [card.tinderCardLabel, card.tinderCardTitle]),
+      legend: [doc.data?.tinderLegend?.txt ?? '', doc.data?.tinderLegend?.display === true],
     }),
     project: (doc) => {
       const votes = doc.stats?.tinderVotes ?? doc.data?.tinderVotes ?? {};
@@ -110,6 +118,7 @@ const FORMATS = {
           yes: Number(votes[card.id]?.yes) || 0,
           no: Number(votes[card.id]?.no) || 0,
         })),
+        legend: doc.data?.tinderLegend?.display === true ? (doc.data.tinderLegend.txt ?? '') : null,
         views: Number(doc.stats?.views) || 0,
       };
     },
@@ -175,19 +184,6 @@ export const RESOURCE_TYPES = Object.freeze(
   Object.fromEntries(Object.entries(FORMATS).map(([type, format]) => [format.resource, type])),
 );
 
-// Url d'image de quiz : https obligatoire (le téléchargement revérifie tout, ici on refuse tôt).
-function imageUrlErrors(input) {
-  if (!Array.isArray(input.questions)) return [];
-  return input.questions.flatMap((question, index) => {
-    if (!isObject(question) || question.img === undefined || question.img === null || question.img === '') return [];
-    let ok = false;
-    try {
-      ok = typeof question.img === 'string' && new URL(question.img).protocol === 'https:';
-    } catch { /* URL invalide */ }
-    return ok ? [] : [{ field: `questions[${index}].img`, code: 'invalid_value', message: `L'image de la question ${index + 1} doit être une URL https.` }];
-  });
-}
-
 /** Corps JSON → entrée partagée du format ; toutes les violations réunies en une erreur `400`. */
 export function parseCreateRequest(type, body) {
   const format = FORMATS[type];
@@ -197,7 +193,6 @@ export function parseCreateRequest(type, body) {
   const errors = unknownFields(body, format.fields);
   const input = format.parse(body, errors);
   errors.push(...format.validate(input));
-  if (type === 'quiz') errors.push(...imageUrlErrors(input));
   errors.push(...authorErrors(body.author));
   if (errors.length > 0) throw validationFailed(errors);
   return { input, author: body.author ?? DEFAULT_AUTHOR };
@@ -221,8 +216,19 @@ const conflict = (noun, stored) => new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'Id
     : `Cette clé a déjà servi pour un ${noun} supprimé depuis.`,
 });
 
-/** Télécharge, convertit et copie les images de quiz ; nettoie tout en cas d'échec. */
-async function copyQuizImages(input, { images, imageStore }) {
+/**
+ * Image d'une question → URL d'une image du Storage de l'environnement. Image déjà chez nous :
+ * gardée, ou copiée si c'est un envoi `POST /images` ; sinon téléchargée, convertie et copiée.
+ * @returns {Promise<{ url: string, path?: string }>} `path` = objet créé, à nettoyer si échec
+ */
+async function importImage(img, { images, imageStore }) {
+  const adopted = await imageStore.adopt(img, QUIZ_PREFIX);
+  if (adopted) return adopted;
+  return imageStore.put(await images.convert(await images.fetch(img)), QUIZ_PREFIX);
+}
+
+/** Images de quiz dans le Storage de l'environnement ; nettoie tout en cas d'échec. */
+async function copyQuizImages(input, deps) {
   const copied = [];
   const questions = [];
   try {
@@ -231,21 +237,20 @@ async function copyQuizImages(input, { images, imageStore }) {
         questions.push(question);
         continue;
       }
-      let webp;
+      let image;
       try {
-        webp = await images.convert(await images.fetch(question.img));
+        image = await importImage(question.img, deps);
       } catch (error) {
         if (error instanceof ImageError) {
           throw validationFailed([{ field: `questions[${index}].img`, code: 'invalid_value', message: `Question ${index + 1} : ${error.message}` }]);
         }
         throw error;
       }
-      const stored = await imageStore.put(webp, 'quizs');
-      copied.push(stored.path);
-      questions.push({ ...question, img: stored.url });
+      if (image.path) copied.push(image.path);
+      questions.push({ ...question, img: image.url });
     }
   } catch (error) {
-    await removeAll(copied, imageStore);
+    await removeAll(copied, deps.imageStore);
     throw error;
   }
   return { input: { ...input, questions }, copied };
