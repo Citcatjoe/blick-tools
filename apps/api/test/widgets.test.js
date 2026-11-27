@@ -7,7 +7,8 @@ import sharp from 'sharp';
 import {
   transformWidgetData, buildCalendarSaveData, buildTinderSaveData, buildQuizSaveData,
   buildTeaserSaveData, buildFolderSaveData, buildNatinotesSaveData, buildPotmSaveData, buildFactsSaveData,
-  listTeamsForPicker, potmTeamsForContext, WIDGET_FORMS,
+  buildPronoSaveData, buildTestimonySaveData,
+  listTeamsForPicker, potmTeamsForContext, WIDGET_FORMS, PRONO_TEAMS, PRONO_COMPETITIONS,
 } from '@rms/widget-model';
 import { createApp } from '../src/app.js';
 import { createCallerVerifier } from '../src/auth.js';
@@ -497,6 +498,11 @@ const FACTS = {
     { type: 'rating', title: 'Quelle note ?' },
   ],
 };
+const PRONO = { event: PRONO_COMPETITIONS[2].name, date: '2026-06-15', team1: PRONO_TEAMS[0].name, team2: PRONO_TEAMS[1].name, theme: 'Sport' };
+const TESTIMONY = {
+  title: 'Votre avis nous intéresse', subject: 'Hausse des primes maladie',
+  question: 'Comment faites-vous face à la hausse de vos primes ?', timeExpires: '2026-12-20T20:45', theme: 'Suisse',
+};
 const docFrom = (record, id, author = 'Hub Rédaction') => transformWidgetData({ ...record, id, author, deleted: false }, { serverTimestamp: () => TS });
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -659,6 +665,64 @@ test('POST /facts : champ d\'un autre type, deuxième item « rating » → 400 
   assert.deepEqual([docs.size, fetched], [0, []]);
 });
 
+test('POST /pronos : équipes complétées par teams.json, un vote par issue, date à midi heure suisse ; GET avec votes ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('pronos', PRONO, { ...PRONO, team2: PRONO_TEAMS[2].name });
+  assert.equal(embedUrl, `${BASE}prono/?pronoDoc=${id}`);
+  const doc = docs.get(id);
+  const expected = docFrom(buildPronoSaveData({ ...PRONO, date: parseDate(PRONO.date) }, { toTimestamp: fakeTimestamp }), id);
+  assert.deepEqual(plain(doc), plain(expected));
+  assert.equal(doc.data.pronoData.date.toDate().toISOString(), '2026-06-15T10:00:00.000Z'); // midi en été = UTC+2
+  assert.deepEqual(plain(doc.data.pronoData.item1), { name: PRONO_TEAMS[0].name, code: PRONO_TEAMS[0].code, type: 'national', color: PRONO_TEAMS[0].color });
+  assert.deepEqual(doc.stats, { views: 0, itemVotes: { item1: 1, item2: 1, item3: 1 } });
+  assert.equal(doc.meta.title, `${PRONO.team1} - ${PRONO.team2}`);
+
+  doc.stats.itemVotes.item2 = 7;
+  const got = await call('GET', `/pronos/${id}`);
+  assert.deepEqual(got.json, {
+    id, embedUrl, event: PRONO.event, date: '2026-06-15', team1: PRONO.team1, team2: PRONO.team2,
+    votes: { team1: 1, team2: 7, draw: 1 }, views: 0, theme: 'Sport', brand: 'blick',
+  });
+});
+
+test('POST /pronos : compétition ou équipe hors liste, date illisible, couleur (réservée au dashboard) → 400', async () => {
+  const [club] = potmTeamsForContext('national_league');
+  const res = await call('POST', '/pronos', { ...PRONO, event: 'Ligue des champions', date: '2026-02-30', team1: club.name, color1: '#ff0000' });
+  assert.equal(res.status, 400);
+  assert.deepEqual(fields(res), [['color1', 'unknown_field'], ['event', 'invalid_value'], ['date', 'invalid_value'], ['team1', 'invalid_value']]);
+  assert.equal(docs.size, 0);
+});
+
+test('POST /testimonies : textes rognés, date limite en heure suisse, compteurs à 0 ; GET sans les messages ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('testimonies', { ...TESTIMONY, subject: ` ${TESTIMONY.subject} ` }, { ...TESTIMONY, timeExpires: '2026-12-21T20:45' });
+  assert.equal(embedUrl, `${BASE}testimony/?testimonyDoc=${id}`);
+  const doc = docs.get(id);
+  const expected = docFrom(buildTestimonySaveData({ ...TESTIMONY, timeExpires: parseDateTime(TESTIMONY.timeExpires) }, { toTimestamp: fakeTimestamp }), id);
+  assert.deepEqual(plain(doc), plain(expected));
+  assert.equal(doc.data.timeExpires.toDate().toISOString(), '2026-12-20T19:45:00.000Z');
+  assert.deepEqual(doc.stats, { views: 0, msgSent: 0 });
+  assert.equal(doc.meta.title, TESTIMONY.subject);
+
+  doc.stats.msgSent = 3;
+  doc.messages = [{ name: 'Lecteur', email: 'lecteur@example.ch', message: 'Mon témoignage' }];
+  const got = await call('GET', `/testimonies/${id}`);
+  assert.deepEqual(got.json, {
+    id, embedUrl, title: TESTIMONY.title, subject: TESTIMONY.subject, question: TESTIMONY.question,
+    timeExpires: '2026-12-20T19:45:00.000Z', views: 0, msgSent: 3, theme: 'Suisse', brand: 'blick',
+  });
+
+  const open = await call('POST', '/testimonies', { ...TESTIMONY, timeExpires: undefined });
+  assert.equal(open.status, 201);
+  assert.equal(docs.get(open.json.id).data.timeExpires, null);
+  assert.equal((await call('GET', `/testimonies/${open.json.id}`)).json.timeExpires, null);
+});
+
+test('POST /testimonies : textes manquants, date limite illisible, champ inconnu → 400', async () => {
+  const res = await call('POST', '/testimonies', { theme: 'Suisse', title: ' ', question: 'Q ?', timeExpires: '2026-12-20', messages: [] });
+  assert.equal(res.status, 400);
+  assert.deepEqual(fields(res), [['messages', 'unknown_field'], ['title', 'required'], ['subject', 'required'], ['timeExpires', 'invalid_value']]);
+  assert.equal(docs.size, 0);
+});
+
 test('images des nouveaux formats : illisible → 400 sur son chemin, copies supprimées ; envoi POST /images copié sous le préfixe', async () => {
   const teaser = await call('POST', '/teasers', { ...TEASER, img: 'https://cdn.example/broken.jpg' });
   assert.deepEqual(fields(teaser), [['img', 'invalid_value']]);
@@ -707,7 +771,7 @@ test('routage : une ressource par format décrit (hors sondage), autre format ou
   }
   const teaser = await call('POST', '/teasers', TEASER);
   assert.equal((await call('GET', `/folders/${teaser.json.id}`)).status, 404, 'id d\'un autre format');
-  for (const path of ['/testimonies', '/testimony', '/pronos', '/prono', '/teasers/a/b', '/teams/x', '/constructor', '/__proto__', '/hasOwnProperty/x']) {
+  for (const path of ['/testimony', '/prono', '/teasers/a/b', '/teams/x', '/constructor', '/__proto__', '/hasOwnProperty/x']) {
     assert.equal((await call('POST', path, {})).status, 404, path);
   }
 });
@@ -799,12 +863,13 @@ function withPath(request, path, value) {
   return copy;
 }
 
-test('GET /widget-types : la description des 9 formats, telle que dans le modèle partagé', async () => {
+test('GET /widget-types : la description des 11 formats, telle que dans le modèle partagé', async () => {
   const res = await call('GET', '/widget-types');
   assert.equal(res.status, 200);
   assert.deepEqual(res.json.formats.map((f) => [f.type, f.resource]), [
     ['poll', 'polls'], ['calendar', 'calendars'], ['tinder', 'tinders'], ['quiz', 'quizzes'],
     ['teaser', 'teasers'], ['folder', 'folders'], ['natinotes', 'natinotes'], ['potm', 'potms'], ['facts', 'facts'],
+    ['prono', 'pronos'], ['testimony', 'testimonies'],
   ]);
   assert.deepEqual(res.json.formats, JSON.parse(JSON.stringify(WIDGET_FORMS)));
   assert.equal((await call('GET', '/widget-types', undefined, { token: null })).status, 401);

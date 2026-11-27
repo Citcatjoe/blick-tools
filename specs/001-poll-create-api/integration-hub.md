@@ -185,7 +185,7 @@ règles sont celles du dashboard (module partagé) : un widget valide dans l'un 
   `404`.
 - `embedUrl` : `…/bl-tools-client-<type>/?<type>Doc=<id>` (sans `&brand=`).
 
-## Teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants (spec `005-hub-all-formats`)
+## Teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants, pronostics, appels à témoignage (spec `005-hub-all-formats`)
 
 Mêmes règles d'appel que les calendriers, tinders et quiz (création et lecture, `blick` seulement,
 rubrique obligatoire, `author` facultatif, `Idempotency-Key` propre au format). Champs, libellés,
@@ -199,11 +199,13 @@ bornes et variantes : `GET /widget-types`. Détail et décisions :
 | NatiNotes | `POST /natinotes` | `GET /natinotes/{id}` | `{ "title", "players": [{ "id", "blickRating", "comment" }], "theme" }` |
 | Joueur·euse du match | `POST /potms` | `GET /potms/{id}` | `{ "context", "category", "text", "date", "players": [≥ 2 × { "name", "position", "team" }], "theme" }` |
 | Faits marquants | `POST /facts` | `GET /facts/{id}` | `{ "title", "date", "items": [{ "type", … }], "theme" }` |
+| Pronostic | `POST /pronos` | `GET /pronos/{id}` | `{ "event", "date", "team1", "team2", "theme" }` |
+| Appel à témoignage | `POST /testimonies` | `GET /testimonies/{id}` | `{ "title", "subject", "question", "theme" }` (+ `timeExpires` facultatif) |
 
 - **Images** (`img` du teaser et du dossier, `items[i].src` / `items[i].picture` des faits) :
   comme celles du quiz (`POST /images` ou URL publique), `400` sur le chemin de l'image.
 - **Retours à la ligne** : `title` du teaser et `name` du dossier les gardent (`\n` réels).
-- **Dates seules** (`date` du joueur·euse du match et des faits) : `2026-12-20`, enregistrées à midi
+- **Dates seules** (`date` du joueur·euse du match, des faits et du pronostic) : `2026-12-20`, enregistrées à midi
   heure suisse ; la lecture rend le même format.
 - **NatiNotes** : joueurs choisis dans `GET /teams` (`players[i].id`), sans doublon ; un
   joueur inconnu ou archivé → `400` sur `players[i].id`. Note Blick entière de 1 à 6.
@@ -211,12 +213,20 @@ bornes et variantes : `GET /widget-types`. Détail et décisions :
   `position` neutre (`Attaquant`…), accordée à l'enregistrement si la catégorie est `Dames`.
 - **Faits marquants** : chaque item a un `type` (`normal`, `quote`, `picture`, `number`,
   `rating`) et seulement les champs de ce type (sinon `unknown_field`) ; au plus un `rating`.
+- **Pronostic** : `event` parmi les compétitions, `team1` / `team2` parmi les équipes nationales
+  (`options` de la description ; deux fois la même équipe est admis, comme dans le dashboard).
+  Code et couleur de l'équipe complétés à l'enregistrement ; un vote posé sur chaque issue
+  (équipe 1, équipe 2, nul), comme le dashboard. La couleur des barres se change dans le dashboard.
+- **Appel à témoignage** : `timeExpires` facultatif, date et heure suisses sans décalage
+  (`2026-12-20T20:45`, comme `dates[i].start` d'un calendrier) ; absent → pas de date limite.
 - **Texte enrichi** (`kind: richtext` : commentaire des notes, textes des faits) : HTML restreint
   à `<p>`, `<br>`, `<strong>`, `<em>`, `<a href="http(s)…">` ; le reste est échappé ou retiré
   par l'API, comme dans le dashboard. Texte vide après nettoyage → `400`.
 - **Lecture** : contenu + compteurs (teaser `views`, `clicks` ; dossier `views`, `clicks` par
   bouton ; notes `views`, `ratings` par joueur ; joueur·euse du match `views`, `votes` par joueur ;
-  faits `views`, `reveal`, `ratingStats`).
+  faits `views`, `reveal`, `ratingStats` ; pronostic `views`, `votes` `{ team1, team2, draw }` ;
+  témoignage `views`, `msgSent`, `timeExpires` — jamais les messages des lecteurs, données
+  personnelles exportées depuis le dashboard).
 
 ### `GET /teams`
 
@@ -225,8 +235,6 @@ Effectifs saisis dans le dashboard (« Éditer les effectifs ») : `{ "teams": [
 joueurs triés par nom. Le Hub s'en sert pour le champ `players[i].id` des NatiNotes
 (`choice` + `source: "teams"` dans la description). Pour ajouter un joueur : dashboard
 `?teams` (ou `?teams=<id de l'équipe>`), qui ouvre l'éditeur des effectifs après connexion.
-
-Témoignages (`testimony`) et pronostics (`prono`) restent créés dans le dashboard seulement.
 
 ## Description des formulaires (spec `004-hub-form-descriptions`)
 
@@ -246,8 +254,7 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 |---|---|---|---|
 | **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
 | **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | aucune sur le contenu ; le bloc se déplace ou se retire de l'article | tout (`?edit=<id>`) |
-| **Teaser, dossier, NatiNotes, joueur·euse du match, faits marquants** | par l'API (`POST`), comme les calendriers ; intégration Hub à faire | aucune sur le contenu | tout (`?edit=<id>`) |
-| **Témoignage, pronostic** (`testimony`, `prono`) | non | non | détectés dans l'article, création et édition dans le dashboard (`?edit=<id>`) |
+| **Teaser, dossier, NatiNotes, joueur·euse du match, faits marquants, pronostic, témoignage** | par l'API (`POST`), comme les calendriers ; intégration Hub à faire | aucune sur le contenu | tout (`?edit=<id>`) |
 
 > **Publication automatique** : pour le flux de création de sondage en 1 clic, l'Embeddable Ring
 > est **publié automatiquement** (exception confirmée par le propriétaire du Hub Rédaction le
@@ -262,8 +269,8 @@ Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools
 
 ## Hors périmètre de l'API
 
-Pas de suppression de widget ; pas de correction des widgets autres que les sondages ; ni création,
-ni lecture, ni édition des témoignages et pronostics ; pas d'écriture des effectifs : tout cela se fait dans le dashboard Blick Tools. Le CMS garde la main
+Pas de suppression de widget ; pas de correction des widgets autres que les sondages ;
+pas de lecture des messages reçus par les appels à témoignage ; pas d'écriture des effectifs : tout cela se fait dans le dashboard Blick Tools. Le CMS garde la main
 sur l'`id` et l'`embedUrl` qu'il a reçus à la création.
 
 ## Recette sur le stage

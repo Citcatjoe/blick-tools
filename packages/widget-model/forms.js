@@ -29,7 +29,8 @@
 //                   communs `fields` de la liste puis ceux de sa sorte ; `max` : nombre maximum
 //                   d'éléments de cette sorte ; `defaults` : valeurs posées quand on la choisit ;
 //   group           objet (`fields`) ; `optional` : absent si tous ses textes sont vides.
-// `required` : obligatoire. `default` : valeur proposée au départ. `images.prefix` : dossier de
+// `titleField` : champ qui identifie le widget (titre de l'Embeddable), ou liste de champs joints par
+// « - » (pronostic). `required` : obligatoire. `default` : valeur proposée au départ. `images.prefix` : dossier de
 // stockage des images du format. Champs communs non saisis ici : `author` (fixé par le Hub) et
 // `brand` (proposée seulement quand il y a un choix).
 
@@ -45,6 +46,7 @@ import {
   POTM_CATEGORIES, POTM_CONTEXTS, POTM_DEFAULT_CATEGORY, POTM_DEFAULT_CONTEXT, POTM_DEFAULT_POSITION,
   POTM_MIN_PLAYERS, POTM_POSITIONS, POTM_POSITION_LABELS, potmTeamsForContext,
 } from './potm.js';
+import { PRONO_COMPETITIONS, PRONO_TEAMS } from './prono.js';
 import {
   FACTS_ICONS, FACTS_IMAGE_PREFIX, FACTS_ITEM_DEFAULTS, FACTS_ITEM_TYPES, FACTS_ITEM_TYPE_LABELS,
   FACTS_MAX_RATING_ITEMS, FACTS_MIN_ITEMS,
@@ -99,6 +101,9 @@ const theme = Object.freeze({
   required: true,
   options: WIDGET_THEMES.map((value) => ({ value, label: value })),
 });
+
+// Pronostic : les deux équipes se choisissent dans la même liste.
+const pronoTeamOptions = PRONO_TEAMS.map(({ name }) => ({ value: name, label: name }));
 
 /** Champs communs acceptés par toutes les créations, en plus de ceux de la description. */
 export const WIDGET_COMMON_REQUEST_FIELDS = Object.freeze(['theme', 'brand', 'author']);
@@ -446,6 +451,42 @@ export const WIDGET_FORMS = deepFreeze([
           })),
         },
       },
+      theme,
+    ],
+  },
+  {
+    type: 'prono',
+    resource: 'pronos',
+    name: 'Pronostic',
+    noun: 'pronostic',
+    titleField: ['team1', 'team2'], // titre de l'Embeddable : « Suisse - Italie », comme meta.title
+    brands: [...BLICK_ONLY_BRANDS],
+    fields: [
+      {
+        key: 'event',
+        kind: 'choice',
+        label: 'Compétition',
+        required: true,
+        options: PRONO_COMPETITIONS.map(({ name }) => ({ value: name, label: name })),
+      },
+      { key: 'date', kind: 'date', label: 'Date du match', required: true },
+      { key: 'team1', kind: 'choice', label: 'Équipe 1', required: true, options: pronoTeamOptions },
+      { key: 'team2', kind: 'choice', label: 'Équipe 2', required: true, options: pronoTeamOptions },
+      theme,
+    ],
+  },
+  {
+    type: 'testimony',
+    resource: 'testimonies',
+    name: 'Appel à témoignage',
+    noun: 'appel à témoignage',
+    titleField: 'subject',
+    brands: [...BLICK_ONLY_BRANDS],
+    fields: [
+      { key: 'title', kind: 'text', label: 'Titre de la box', placeholder: 'Votre avis nous intéresse', required: true },
+      { key: 'subject', kind: 'text', label: 'Sujet', placeholder: 'Hausse des primes maladie', required: true },
+      { key: 'question', kind: 'textarea', label: 'Question aux lecteurs', placeholder: 'Comment faites-vous face à la hausse de vos primes ? Racontez-nous.', required: true },
+      { key: 'timeExpires', kind: 'datetime', label: 'Date limite de réponse', required: false },
       theme,
     ],
   },

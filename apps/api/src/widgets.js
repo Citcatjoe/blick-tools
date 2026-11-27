@@ -13,6 +13,8 @@ import {
   validateNatinotes, buildNatinotesSaveData,
   validatePotm, buildPotmSaveData,
   validateFacts, buildFactsSaveData,
+  validateProno, buildPronoSaveData,
+  validateTestimony, buildTestimonySaveData,
   transformWidgetData, buildEmbedUrl, DEFAULT_BRAND, requestFieldKeys, widgetForm,
 } from '@rms/widget-model';
 import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
@@ -65,6 +67,8 @@ const toDay = (timestamp) => {
 
 /** Date seule de la requête → `Date` à midi heure suisse ; illisible → `Invalid Date` (refusée par la validation). */
 const dateInput = (value) => (isMissing(value) ? value : (parseDate(value) ?? new Date(NaN)));
+/** Date et heure suisses de la requête → `Date` ; illisible → `Invalid Date` (refusée par la validation). */
+const dateTimeInput = (value) => (isMissing(value) ? value : (parseDateTime(value) ?? new Date(NaN)));
 
 const count = (value) => Number(value) || 0;
 const sum = (values) => values.reduce((total, value) => total + count(value), 0);
@@ -338,6 +342,55 @@ const FORMAT_RULES = {
       reveal: count(doc.stats?.reveal),
       // Avis des lecteurs sur l'item `rating` : nombre de votes par note.
       ratingStats: counts(doc.stats?.ratingStats),
+    }),
+  },
+
+  prono: {
+    parse: (body) => ({
+      theme: body.theme, brand: body.brand, event: body.event, date: dateInput(body.date), team1: body.team1, team2: body.team2,
+    }),
+    validate: validateProno,
+    build: (input, store) => buildPronoSaveData(input, { toTimestamp: store.toTimestamp }),
+    fingerprint: (doc) => ({
+      event: doc.data?.pronoData?.event,
+      date: toIso(doc.data?.pronoData?.date),
+      teams: [doc.data?.pronoData?.item1?.name, doc.data?.pronoData?.item2?.name],
+    }),
+    project: (doc) => {
+      const prono = doc.data?.pronoData ?? {};
+      // Anciens pronostics : votes dans chaque issue.
+      const votes = (key) => count(doc.stats?.itemVotes?.[key] ?? prono[key]?.votes);
+      return {
+        event: prono.event ?? '',
+        date: toDay(prono.date),
+        team1: prono.item1?.name ?? '',
+        team2: prono.item2?.name ?? '',
+        // Votes des lecteurs : victoire de l'équipe 1, de l'équipe 2, match nul.
+        votes: { team1: votes('item1'), team2: votes('item2'), draw: votes('item3') },
+        views: count(doc.stats?.views),
+      };
+    },
+  },
+
+  testimony: {
+    parse: (body) => ({
+      theme: body.theme, brand: body.brand, title: body.title, subject: body.subject, question: body.question,
+      timeExpires: dateTimeInput(body.timeExpires),
+    }),
+    validate: validateTestimony,
+    build: (input, store) => buildTestimonySaveData(input, { toTimestamp: store.toTimestamp }),
+    fingerprint: (doc) => ({
+      texts: [doc.data?.title, doc.data?.subject, doc.data?.question],
+      timeExpires: toIso(doc.data?.timeExpires),
+    }),
+    // Les messages des lecteurs (sous-collection `messages`, données personnelles) ne sont jamais lus.
+    project: (doc) => ({
+      title: doc.data?.title ?? '',
+      subject: doc.data?.subject ?? '',
+      question: doc.data?.question ?? '',
+      timeExpires: toIso(doc.data?.timeExpires),
+      views: count(doc.stats?.views),
+      msgSent: count(doc.stats?.msgSent),
     }),
   },
 };

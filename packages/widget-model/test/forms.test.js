@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   WIDGET_FORMS, requestFieldKeys, widgetForm, listTeamsForPicker,
-  validateTeaser, validateFolder, validateNatinotes, validatePotm, validateFacts,
+  validateTeaser, validateFolder, validateNatinotes, validatePotm, validateFacts, validateProno, validateTestimony,
+  PRONO_COMPETITIONS, PRONO_TEAMS,
 } from '../index.js';
 import { SAMPLES, TEAMS, clone } from './fixtures.js';
 
@@ -47,21 +48,31 @@ test('description publiable telle quelle : JSON pur, chaque champ avec clé, typ
   };
   for (const form of WIDGET_FORMS) {
     check(form.fields, form.type);
-    assert.ok(form.fields.some((f) => f.key === form.titleField), `${form.type} : titleField`);
+    for (const key of [form.titleField].flat()) assert.ok(form.fields.some((f) => f.key === key), `${form.type} : titleField ${key}`);
     assert.equal(form.fields.filter((f) => f.key !== 'brand').at(-1).key, 'theme', `${form.type} : rubrique en dernier (avant la marque)`);
     const hasImage = JSON.stringify(form.fields).includes('"kind":"image"');
     assert.equal(Boolean(form.images?.prefix), hasImage, `${form.type} : préfixe d'images`);
   }
 });
 
-test('formats publiés, dans l\'ordre ; testimony et prono restent réservés au dashboard', () => {
-  assert.deepEqual(WIDGET_FORMS.map((f) => f.type), ['poll', 'calendar', 'tinder', 'quiz', 'teaser', 'folder', 'natinotes', 'potm', 'facts']);
-  assert.deepEqual(WIDGET_FORMS.map((f) => f.resource), ['polls', 'calendars', 'tinders', 'quizzes', 'teasers', 'folders', 'natinotes', 'potms', 'facts']);
+test('formats publiés, dans l\'ordre : les 11 formats du dashboard', () => {
+  assert.deepEqual(WIDGET_FORMS.map((f) => f.type), ['poll', 'calendar', 'tinder', 'quiz', 'teaser', 'folder', 'natinotes', 'potm', 'facts', 'prono', 'testimony']);
+  assert.deepEqual(WIDGET_FORMS.map((f) => f.resource), ['polls', 'calendars', 'tinders', 'quizzes', 'teasers', 'folders', 'natinotes', 'potms', 'facts', 'pronos', 'testimonies']);
   assert.deepEqual(Object.fromEntries(WIDGET_FORMS.filter((f) => f.images).map((f) => [f.type, f.images.prefix])), { quiz: 'quizs', teaser: 'teasers', folder: 'folders', facts: 'factss' });
-  for (const type of ['testimony', 'prono']) {
-    assert.equal(widgetForm(type), null);
-    assert.throws(() => requestFieldKeys(type));
-  }
+  assert.equal(widgetForm('inconnu'), null);
+  assert.throws(() => requestFieldKeys('inconnu'));
+});
+
+test('pronostic : compétitions de competitions.json, équipes nationales seules ; témoignage : date limite facultative', () => {
+  const prono = widgetForm('prono');
+  assert.deepEqual(prono.fields.map((f) => [f.key, f.kind, f.label]), [
+    ['event', 'choice', 'Compétition'], ['date', 'date', 'Date du match'], ['team1', 'choice', 'Équipe 1'], ['team2', 'choice', 'Équipe 2'], ['theme', 'choice', 'Rubrique'],
+  ]);
+  assert.deepEqual(prono.fields[0].options.map((o) => o.value), PRONO_COMPETITIONS.map((c) => c.name));
+  assert.ok(PRONO_TEAMS.length > 0 && PRONO_TEAMS.every((t) => t.type === 'national'));
+  assert.deepEqual(prono.fields[2].options.map((o) => o.value), PRONO_TEAMS.map((t) => t.name));
+  assert.deepEqual(requestFieldKeys('prono').root, ['event', 'date', 'team1', 'team2', 'theme', 'brand', 'author']);
+  assert.deepEqual(requestFieldKeys('testimony'), { root: ['title', 'subject', 'question', 'timeExpires', 'theme', 'brand', 'author'], nested: {} });
 });
 
 test('champs acceptés par l\'API : ceux de la description, plus theme, brand et author ; variantes réunies', () => {
@@ -85,6 +96,8 @@ const VALIDATORS = {
   natinotes: (input) => validateNatinotes(input, { teams: TEAMS }),
   potm: (input) => validatePotm(input),
   facts: (input) => validateFacts(input),
+  prono: (input) => validateProno(input),
+  testimony: (input) => validateTestimony(input),
 };
 
 const PICKER_IDS = listTeamsForPicker(TEAMS).flatMap((team) => team.players.map((p) => p.id));

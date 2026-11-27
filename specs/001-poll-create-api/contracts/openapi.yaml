@@ -1,15 +1,15 @@
 openapi: 3.1.0
 info:
   title: Blick Tools API
-  version: 1.4.0
+  version: 1.5.0
   description: |
     API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
     Formats : sondages (`/polls`, création, lecture, correction des textes) ; calendriers,
     tinders et quiz (`/calendars`, `/tinders`, `/quizzes`, création et lecture — spec 002) ;
-    teasers, dossiers, NatiNotes, joueur·euse du match et faits marquants (`/teasers`,
-    `/folders`, `/natinotes`, `/potms`, `/facts`, création et lecture — spec 005) ; envoi d'une
-    image de widget (`/images` — spec 003) ; effectifs des joueurs (`/teams` — spec 005).
-    Témoignages et pronostics restent créés dans le dashboard seulement.
+    teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants, pronostics et appels à
+    témoignage (`/teasers`, `/folders`, `/natinotes`, `/potms`, `/facts`, `/pronos`,
+    `/testimonies`, création et lecture — spec 005) ; envoi d'une image de widget (`/images` —
+    spec 003) ; effectifs des joueurs (`/teams` — spec 005).
 
     **Règles** : celles du dashboard, partagées (`@rms/widget-model`) — un widget valide dans le
     dashboard est valide par l'API, et inversement.
@@ -537,6 +537,82 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Facts' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /pronos:
+    post:
+      operationId: createProno
+      summary: Créer un pronostic
+      description: |
+        `event` parmi les compétitions de la description ; `team1` / `team2` parmi les équipes
+        nationales (les deux peuvent être identiques, comme dans le dashboard). `date` : date
+        seule, enregistrée à midi heure suisse. Équipes complétées à l'enregistrement (code,
+        couleur de l'équipe) ; un vote posé sur chaque issue (équipe 1, équipe 2, match nul), comme
+        le dashboard. Pas d'image. La couleur des barres reste réglable dans le dashboard seul.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePronoRequest' }
+            example:
+              event: Coupe du monde UEFA 2026
+              date: '2026-06-15'
+              team1: Suisse
+              team2: Canada
+              theme: Sport
+      responses: *createResponses
+  /pronos/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getProno
+      summary: Lire un pronostic
+      responses:
+        '200':
+          description: Pronostic
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Prono' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /testimonies:
+    post:
+      operationId: createTestimony
+      summary: Créer un appel à témoignage
+      description: |
+        `timeExpires` (facultatif) : date et heure suisses sans décalage (`2026-12-20T20:45`),
+        comme `dates[i].start` d'un calendrier ; absent → pas de date limite. Pas d'image.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTestimonyRequest' }
+            example:
+              title: Votre avis nous intéresse
+              subject: Hausse des primes maladie
+              question: Comment faites-vous face à la hausse de vos primes ? Racontez-nous.
+              timeExpires: '2026-12-20T20:45'
+              theme: Suisse
+      responses: *createResponses
+  /testimonies/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getTestimony
+      summary: Lire un appel à témoignage
+      description: |
+        Textes, date limite et compteurs seulement : les messages des lecteurs (données
+        personnelles) ne sont jamais renvoyés ; ils s'exportent depuis le dashboard.
+      responses:
+        '200':
+          description: Appel à témoignage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Testimony' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1134,6 +1210,58 @@ components:
         ratingStats: { type: object, additionalProperties: { type: integer }, description: 'Item `rating` : nombre de votes par note.' }
         theme: { type: string }
         brand: { type: string }
+    CreatePronoRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [event, date, team1, team2, theme]
+      properties:
+        event: { type: string, description: 'Compétition (`options` de la description : « Amical », « Coupe du monde UEFA 2026 »…).' }
+        date: { type: string, format: date, description: 'Date du match, enregistrée à midi heure suisse.', example: '2026-06-15' }
+        team1: { type: string, description: 'Équipe nationale (`options` de la description).' }
+        team2: { type: string, description: 'Équipe nationale (`options` de la description).' }
+    Prono:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        event: { type: string }
+        date: { type: [string, 'null'], format: date, description: Jour en heure suisse. }
+        team1: { type: string }
+        team2: { type: string }
+        votes:
+          type: object
+          description: Votes des lecteurs (dont le vote posé sur chaque issue à la création).
+          properties:
+            team1: { type: integer }
+            team2: { type: integer }
+            draw: { type: integer }
+        views: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreateTestimonyRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [title, subject, question, theme]
+      properties:
+        title: { type: string, description: Titre de la box. }
+        subject: { type: string, description: Sujet (titre du widget dans le dashboard). }
+        question: { type: string, description: Question aux lecteurs. }
+        timeExpires: { type: string, description: 'Date limite de réponse, heure suisse sans décalage.', example: '2026-12-20T20:45' }
+    Testimony:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        title: { type: string }
+        subject: { type: string }
+        question: { type: string }
+        timeExpires: { type: [string, 'null'], format: date-time, description: Instant UTC ; null sans date limite. }
+        views: { type: integer }
+        msgSent: { type: integer, description: Nombre de témoignages reçus. }
+        theme: { type: string }
+        brand: { type: string }
     PickerTeam:
       type: object
       properties:
@@ -1157,7 +1285,12 @@ components:
         resource: { type: string, example: tinders, description: 'Ressource de création et de lecture.' }
         name: { type: string, example: Tinder }
         noun: { type: string, example: tinder, description: 'Nom dans une phrase (« Création du tinder »).' }
-        titleField: { type: string, example: title, description: 'Champ qui identifie le widget (titre de l''Embeddable).' }
+        titleField:
+          oneOf:
+            - { type: string }
+            - { type: array, items: { type: string } }
+          example: title
+          description: 'Champ qui identifie le widget (titre de l''Embeddable), ou liste de champs joints par « - » (pronostic : team1, team2).'
         brands: { type: array, items: { type: string }, example: [blick] }
         fields: { type: array, items: { $ref: '#/components/schemas/FormField' } }
         images:

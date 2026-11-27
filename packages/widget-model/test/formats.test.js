@@ -6,6 +6,8 @@ import {
   validateNatinotes, buildNatinotesSaveData, listTeamsForPicker, NATINOTES_RATINGS,
   validatePotm, buildPotmSaveData, POTM_TEAMS, potmPositionForCategory,
   validateFacts, buildFactsSaveData, FACTS_ITEM_FIELDS, FACTS_RATING_ICON,
+  validateProno, buildPronoSaveData, PRONO_TEAMS,
+  validateTestimony, buildTestimonySaveData,
   normalizeFocal, transformWidgetData,
 } from '../index.js';
 import { SAMPLES, TEAMS, fields, serverTimestamp, toTimestamp } from './fixtures.js';
@@ -365,4 +367,79 @@ test('faits marquants (édition dashboard) : id et ratingStats existants conserv
   const save = buildFactsSaveData({ ...SAMPLES.facts, items: [{ ...SAMPLES.facts.items[4], id: 'r1' }], ratingStats: { 5: 3 } }, { toTimestamp });
   assert.equal(save.factsData.items[0].id, 'r1');
   assert.deepEqual(save.ratingStats, { 5: 3 });
+});
+
+// ---------- Pronostic ----------
+
+test('validateProno : compétition et équipes nationales de la liste, date valide, couleurs #RRGGBB facultatives', () => {
+  assert.deepEqual(validateProno(SAMPLES.prono), []);
+  assert.deepEqual(validateProno({ ...SAMPLES.prono, team2: 'Suisse' }), [], 'deux fois la même équipe : admis comme dans le dashboard');
+  assert.deepEqual(fields(validateProno({ brand: 'pme' })), [
+    ['theme', 'required'], ['event', 'required'], ['date', 'required'], ['team1', 'required'], ['team2', 'required'], ['brand', 'invalid_value'],
+  ]);
+  assert.deepEqual(fields(validateProno({ ...SAMPLES.prono, event: 'Ligue des champions', date: new Date('x'), team1: 'Berne', color1: 'rouge', color2: '#00FF00' })), [
+    ['event', 'invalid_value'], ['date', 'invalid_value'], ['team1', 'invalid_value'], ['color1', 'invalid_value'],
+  ]);
+});
+
+test('pronostic : équipes complétées par teams.json, un vote par issue dans stats.itemVotes, titre « équipe 1 - équipe 2 »', () => {
+  const doc = toDoc(buildPronoSaveData(SAMPLES.prono, { toTimestamp }));
+  const suisse = PRONO_TEAMS.find((t) => t.name === 'Suisse');
+  const canada = PRONO_TEAMS.find((t) => t.name === 'Canada');
+  assert.equal(doc.type, 'prono');
+  assert.equal(doc.meta.title, 'Suisse - Canada');
+  assert.deepEqual(doc.data, {
+    pronoData: {
+      event: 'Coupe du monde UEFA 2026',
+      date: toTimestamp(SAMPLES.prono.date),
+      item1: { name: 'Suisse', code: suisse.code, type: 'national', color: suisse.color },
+      item2: { name: 'Canada', code: canada.code, type: 'national', color: canada.color },
+      item3: {},
+    },
+  });
+  assert.deepEqual(doc.stats, { views: 0, itemVotes: { item1: 1, item2: 1, item3: 1 } });
+  // Couleur choisie dans le dashboard
+  const colored = buildPronoSaveData({ ...SAMPLES.prono, color1: '#123456' }, { toTimestamp });
+  assert.deepEqual([colored.pronoData.item1.color, colored.pronoData.item2.color], ['#123456', canada.color]);
+});
+
+test('pronostic : même document que l\'ancien chemin de Form.jsx (PronoForm enrichit, Form.jsx enregistre)', () => {
+  const item = (name) => {
+    const team = PRONO_TEAMS.find((t) => t.name === name);
+    return { name, code: team.code, type: team.type, color: team.color, votes: 1 };
+  };
+  const legacy = {
+    type: 'prono',
+    pronoData: { event: SAMPLES.prono.event, date: toTimestamp(SAMPLES.prono.date), item1: item('Suisse'), item2: item('Canada'), item3: { votes: 1 } },
+    brand: 'blick', theme: 'Sport', counterViews: 0,
+  };
+  assert.deepEqual(toDoc(buildPronoSaveData(SAMPLES.prono, { toTimestamp })), toDoc(legacy));
+});
+
+// ---------- Appel à témoignage ----------
+
+test('validateTestimony : titre, sujet et question obligatoires, date limite facultative mais valide', () => {
+  assert.deepEqual(validateTestimony(SAMPLES.testimony), []);
+  assert.deepEqual(validateTestimony({ ...SAMPLES.testimony, timeExpires: undefined }), []);
+  assert.deepEqual(fields(validateTestimony({ brand: 'pme', timeExpires: new Date('x') })), [
+    ['theme', 'required'], ['title', 'required'], ['subject', 'required'], ['question', 'required'], ['timeExpires', 'invalid_value'], ['brand', 'invalid_value'],
+  ]);
+  assert.deepEqual(fields(validateTestimony({ ...SAMPLES.testimony, subject: ' ', question: 42 })), [['subject', 'required'], ['question', 'invalid_type']]);
+});
+
+test('témoignage : même document que l\'ancien chemin de Form.jsx (textes rognés, compteurs à 0, titre = sujet)', () => {
+  const doc = toDoc(buildTestimonySaveData(SAMPLES.testimony, { toTimestamp }));
+  assert.equal(doc.meta.title, 'Hausse des primes maladie');
+  assert.deepEqual(doc.data, {
+    title: 'Votre avis nous intéresse', subject: 'Hausse des primes maladie',
+    question: 'Comment faites-vous face\nà la hausse de vos primes ?', timeExpires: toTimestamp(SAMPLES.testimony.timeExpires),
+  });
+  assert.deepEqual(doc.stats, { views: 0, msgSent: 0 });
+  const legacy = {
+    type: 'testimony', title: 'Votre avis nous intéresse', brand: 'blick', theme: 'Suisse', subject: 'Hausse des primes maladie',
+    question: 'Comment faites-vous face\nà la hausse de vos primes ?', timeExpires: toTimestamp(SAMPLES.testimony.timeExpires),
+    counterViews: 0, counterMsgSent: 0,
+  };
+  assert.deepEqual(doc, toDoc(legacy));
+  assert.equal(toDoc(buildTestimonySaveData({ ...SAMPLES.testimony, timeExpires: undefined }, { toTimestamp })).data.timeExpires, null);
 });

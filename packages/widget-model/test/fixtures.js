@@ -70,6 +70,20 @@ export const SAMPLES = {
       { type: 'rating', title: 'Et vous ?' },
     ],
   },
+  prono: {
+    theme: 'Sport',
+    event: 'Coupe du monde UEFA 2026',
+    date: new Date('2026-06-15T10:00:00Z'),
+    team1: 'Suisse',
+    team2: 'Canada',
+  },
+  testimony: {
+    theme: 'Suisse',
+    title: ' Votre avis nous intéresse ',
+    subject: ' Hausse des primes maladie ',
+    question: ' Comment faites-vous face\nà la hausse de vos primes ? ',
+    timeExpires: new Date('2026-12-20T19:45:00Z'),
+  },
 };
 
 export const TS = { sentinel: 'serverTimestamp' };

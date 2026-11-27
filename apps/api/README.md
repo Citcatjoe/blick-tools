@@ -48,12 +48,13 @@ POST /folders     GET /folders/{id}    (image copiée sous folders/)
 POST /natinotes   GET /natinotes/{id}  (joueurs des effectifs : players[i].id de GET /teams)
 POST /potms       GET /potms/{id}
 POST /facts       GET /facts/{id}      (images items[i].src / items[i].picture copiées sous factss/)
+POST /pronos      GET /pronos/{id}     (compétition et équipes nationales de la description)
+POST /testimonies GET /testimonies/{id} (lecture sans les messages des lecteurs)
 POST /images      corps = fichier brut (JPEG/PNG/WebP/GIF ≤ 10 Mo) → 201 { url } pour tout champ image
 GET /widget-types description des formulaires de création (WIDGET_FORMS de @rms/widget-model)
 GET /teams        effectifs des joueurs (collection teams, archivés exclus), lecture seule
 ```
 
-Témoignages (`testimony`) et pronostics (`prono`) restent créés dans le dashboard seulement.
 Images : champs `kind: image` de la description (listes et variantes comprises), copiées sous
 `images.prefix` du format ; même traitement et même nettoyage en cas d'échec pour tous.
 

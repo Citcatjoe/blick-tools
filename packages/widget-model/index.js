@@ -13,3 +13,5 @@ export * from './natinotes.js';
 export * from './potm.js';
 export * from './facts.js';
 export * from './forms.js';
+export * from './prono.js';
+export * from './testimony.js';
