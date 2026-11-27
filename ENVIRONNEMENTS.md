@@ -74,7 +74,7 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
 
 | Commande | Projet | Fichier |
 |---|---|---|
-| `npm run rules:check:prod` / `rules:check:test` | prod / test | vérifie le fichier local contre 22 cas simulés (API Rules test), sans rien publier |
+| `npm run rules:check:prod` / `rules:check:test` | prod / test | vérifie le fichier local contre 26 cas simulés (API Rules test), sans rien publier |
 | `npm run rules:deploy:prod` | `blick-tools-app-42a99` (alias `prod`) | `firebase/prod/*.rules` (vérification puis CLI Firebase) |
 | `npm run rules:deploy:test` | `widget-studio-test` (alias `test`) | `firebase/test/*.rules` (vérification puis CLI Firebase) |
 
@@ -85,6 +85,12 @@ dans `firebase/test/firestore.rules` (et inversement).
 **Depuis le 2026-11-19 (prod ; test depuis le 2026-11-20) :**
 - **Anonyme** (widgets dans les articles) : lecture des widgets, compteurs de `stats`, dépôt d'un message
   de témoignage. Les messages ne sont plus lisibles publiquement (audit S1 corrigé).
+- **Vote « joueur·euse du match » (2026-11-27)** : la règle exigeait `stats.totalVotes` + 1, champ que
+  l'app n'écrit plus depuis la structure `widgets` (app potm, 2026-08-17) : tout vote anonyme était
+  refusé (audit S5). Un vote = un seul candidat touché dans `stats.playersVotes`. Publié par l'API
+  Firebase Rules, Firestore seulement (Storage inchangé) : test `855bfd93…` (retour arrière
+  `548cd0d9…`), prod `ad20bdbd…` (retour arrière `b9eba71a…`). Vérifié en test par un vrai vote anonyme
+  (accepté) et un vote sur deux candidats (refusé).
 - **Membre** (`isMember()`) : tout le reste. Membre = adresse `@ringier.ch` **vérifiée** (connexion
   Google) ou l'un des comptes à mot de passe existants, cités par uid dans les règles (7 en prod, 3 en
   test). Un compte connecté qui n'est pas membre n'a aucun droit : l'inscription étant ouverte (exigée
