@@ -57,6 +57,8 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
   joueur·euse du match, faits marquants, `GET /teams`) déployée le 2026-11-27 (révision
   `blick-tools-api-00008-vst`, commit `406c802` ; retour arrière : `00007-td5`), contrôlée sans écriture
   (description à 9 formats, effectifs lus, demandes incomplètes refusées sur le bon champ).
+  Pronostics et appels à témoignage (commit `3886095`) : révision `blick-tools-api-00009-r2s`
+  (2026-11-27 ; retour arrière : `00008-vst`), description à 11 formats contrôlée sans écriture.
 - Prod (`BLICK_TOOLS_API_URL_PROD` de `hub-backend`) : service Cloud Run `blick-tools-api` sur
   `blick-tools-app-42a99` (`https://blick-tools-api-273916803061.europe-west1.run.app`), déployé le
   2026-11-19 ; calendriers, tinders et quiz (spec 002) déployés le 2026-11-26 (révision
