@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-27
 
-**Status**: Implemented — en attente de déploiement
+**Status**: Implemented — test recetté, prod déployée (recette par le Hub)
 
 **Input**: demande du Hub Rédaction (`PROMPT-blick-tools-regles-et-images.md`) après la recette de la
 spec 002 : (1) les règles de validation diffèrent entre un widget créé par le dashboard et par

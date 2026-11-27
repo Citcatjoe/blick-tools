@@ -26,8 +26,8 @@ description: "Tâches — mêmes règles dashboard / API, envoi d'image de quiz"
 
 ## Phase 4: Contrat, docs, déploiement
 
-- [ ] T010 `openapi.yaml` 1.2.0, `integration-hub.md`, `002/data-model.md`, `apps/api/README.md` (cycle de vie), `ENVIRONNEMENTS.md`
-- [ ] T011 Règle de cycle de vie `hub-uploads/` 7 jours sur les buckets test et prod (approbation)
-- [ ] T012 Test : déploiement, recette réelle (SC-001)
-- [ ] T013 Prod : déploiement, recette réelle (SC-001) avec approbation
-- [ ] T014 Dashboard : build test + prod pour l'upload FTP
+- [X] T010 `openapi.yaml` 1.2.0, `integration-hub.md`, `002/data-model.md`, `apps/api/README.md` (cycle de vie), `ENVIRONNEMENTS.md`
+- [X] T011 Règle de cycle de vie `hub-uploads/` 7 jours sur les buckets test et prod (approbation)
+- [X] T012 Test : révision `blick-tools-api-00006-4zr`, recette réelle (SC-001) OK, données de recette supprimées
+- [X] T013 Prod : révision `blick-tools-api-00003-z9k` ; contrôle sans écriture (démarrage, config, 403 sans jeton) — recette réelle par le Hub
+- [X] T014 Dashboard : build test + prod pour l'upload FTP

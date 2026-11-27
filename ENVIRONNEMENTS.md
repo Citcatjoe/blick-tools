@@ -51,13 +51,18 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
   déployé le 2026-11-20 ; calendriers, tinders et quiz (spec 002) ajoutés et recettés le 2026-11-26
   (`STORAGE_BUCKET=widget-studio-test.firebasestorage.app`, rôle `storage.objectAdmin` du compte
   `api-blicktools-ecriture` sur ce seul bucket). Appelants : `hub-backend@rms-leserreporter-romandie`
-  et `api-smoke-caller@widget-studio-test` (recette).
+  et `api-smoke-caller@widget-studio-test` (recette). Spec 003 (règles du dashboard, `POST /images`)
+  déployée et recettée le 2026-11-27 (révision `blick-tools-api-00006-4zr`, commit `32666a2`).
 - Prod (`BLICK_TOOLS_API_URL_PROD` de `hub-backend`) : service Cloud Run `blick-tools-api` sur
   `blick-tools-app-42a99` (`https://blick-tools-api-273916803061.europe-west1.run.app`), déployé le
   2026-11-19 ; calendriers, tinders et quiz (spec 002) déployés le 2026-11-26 (révision
   `blick-tools-api-00002-mns`, `STORAGE_BUCKET=blick-tools-app-42a99.firebasestorage.app`, rôle
   `storage.objectAdmin` sur ce seul bucket). Appelant unique : `hub-backend@rms-leserreporter-romandie`
-  (pas de compte de recette : première vérification réelle par le Hub).
+  (pas de compte de recette : première vérification réelle par le Hub). Spec 003 déployée le
+  2026-11-27 (révision `blick-tools-api-00003-z9k`, commit `32666a2` ; retour arrière : `00002-mns`).
+- Envois d'images `POST /images` : préfixe `hub-uploads/` des deux buckets, supprimé après 7 jours
+  par une règle de cycle de vie (`apps/api/storage-lifecycle.json`, posée le 2026-11-27 ; seule règle
+  des buckets).
 - Procédure de déploiement : `apps/api/README.md` (variable `STORAGE_BUCKET` obligatoire depuis la
   spec 002).
 
