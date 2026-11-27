@@ -49,8 +49,9 @@ service cloud.firestore {
           (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['tinderVotes']) && request.resource.data.stats.tinderVotes is map) ||
           // Quiz
           (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['statsGlobal', 'statsQuestions'])) ||
-          // POTM
-          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['totalVotes', 'playersVotes']) && request.resource.data.stats.totalVotes == resource.data.stats.totalVotes + 1) ||
+          // POTM : un vote = un seul candidat (l'app n'écrit que stats.playersVotes ; l'ancienne règle
+          // exigeait un stats.totalVotes que ni le dashboard ni l'app n'écrivent : votes des lecteurs refusés)
+          (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['playersVotes']) && isOneVoteMore(request.resource.data.stats.playersVotes, resource.data.stats.get('playersVotes', {}))) ||
           // PRONO
           (request.resource.data.stats.diff(resource.data.stats).changedKeys().hasOnly(['itemVotes'])) ||
           // FACTS
@@ -291,6 +292,12 @@ service cloud.firestore {
     // clé (absente avant), or changedKeys() ne compte que les clés déjà présentes
     // dont la valeur change — il ignore les ajouts. affectedKeys() = ajouts ∪
     // suppressions ∪ modifications, donc il couvre bien le tout premier vote.
+    // FONCTION POUR LE VOTE POTM : un seul candidat touché (comme les notes NatiNotes ; le langage des
+    // règles ne permet pas de lire la clé modifiée, donc pas de contrôle du +1)
+    function isOneVoteMore(newVotes, oldVotes) {
+      return newVotes is map && newVotes.diff(oldVotes).affectedKeys().size() == 1;
+    }
+
     function isPlayerRatingsUpdate(newRatings, oldRatings) {
       return newRatings is map &&
         newRatings.diff(oldRatings).affectedKeys().size() == 1;

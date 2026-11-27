@@ -184,7 +184,7 @@ Détails :
 `firebase-tools` est en devDependency racine ; la config vit dans `firebase/` (pas à la racine) :
 
 - `firebase/.firebaserc` — alias `prod` (`blick-tools-app-42a99` : seul le nom affiché peut changer, l'ID est immuable) et `test` (`widget-studio-test`, projet Ringier dédié).
-- `firebase/firebase.<env>.json` + `firebase/<env>/{firestore,storage}.rules` — une config par environnement. Les règles Firestore de test reprennent celles de la prod (`isMember()` : `@ringier.ch` vérifié ou liste d'uid), seule la liste des comptes change. `npm run rules:check:<env>` les vérifie contre 22 cas simulés avant tout déploiement.
+- `firebase/firebase.<env>.json` + `firebase/<env>/{firestore,storage}.rules` — une config par environnement. Les règles Firestore de test reprennent celles de la prod (`isMember()` : `@ringier.ch` vérifié ou liste d'uid), seule la liste des comptes change. `npm run rules:check:<env>` les vérifie contre 26 cas simulés avant tout déploiement.
 - `npm run rules:pull:prod` — récupère les règles **réellement déployées** (API Firebase Rules, jeton de la config gcloud `blick-prod`). À lancer avant toute modification : `firebase deploy` remplace le ruleset entier, un fichier local périmé écraserait les retouches faites dans la console.
 - `npm run rules:deploy:<env>` — déploie les règles Firestore et Storage (ajouter `-- --dry-run` pour seulement les compiler côté serveur). Storage sert au back-office (`ImageUploader.jsx`, `PortraitUploader.jsx`) ; les widgets affichent les images par leur URL de téléchargement à jeton, non filtrée par les règles.
 - Comptes : tout passe sous `cesar.greppin@ringier.ch` (`firebase login` + config gcloud `blick-prod`).

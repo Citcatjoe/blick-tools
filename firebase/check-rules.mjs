@@ -41,12 +41,17 @@ const legacy = { uid: env.legacyUid, token: { email: 'ancien@exemple.ch', email_
 
 const widget = { type: 'poll', meta: { title: 'T' }, data: { question: 'Q' }, stats: { views: 1 } };
 const message = { email: 'a@b.ch', name: 'A', text: 'Bonjour', timeSent: NOW }; // timeSent == request.time
+const potm = { type: 'potm', meta: { id: 'w1' }, data: { players: [] }, stats: { views: 1, playersVotes: { a: 1, b: 0 } } };
 
 // [attendu, description, auth, méthode, chemin, resource existante, request.resource]
 const cases = [
   ['ALLOW', 'anonyme lit un widget', anon, 'get', 'widgets/w1', widget],
   ['ALLOW', 'anonyme : vue +1', anon, 'update', 'widgets/w1', widget, { ...widget, stats: { views: 2 } }],
   ['DENY', 'anonyme modifie le contenu', anon, 'update', 'widgets/w1', widget, { ...widget, data: { question: 'X' } }],
+  ['ALLOW', 'anonyme : vote POTM +1', anon, 'update', 'widgets/w1', potm, { ...potm, stats: { ...potm.stats, playersVotes: { a: 2, b: 0 } } }],
+  ['ALLOW', 'anonyme : premier vote POTM d’un candidat sans compteur', anon, 'update', 'widgets/w1', potm, { ...potm, stats: { ...potm.stats, playersVotes: { a: 1, b: 0, c: 1 } } }],
+  ['DENY', 'anonyme : vote POTM et autre compteur ensemble', anon, 'update', 'widgets/w1', potm, { ...potm, stats: { ...potm.stats, views: 9, playersVotes: { a: 2, b: 0 } } }],
+  ['DENY', 'anonyme : vote POTM sur deux candidats', anon, 'update', 'widgets/w1', potm, { ...potm, stats: { ...potm.stats, playersVotes: { a: 2, b: 1 } } }],
   ['DENY', 'anonyme crée un widget', anon, 'create', 'widgets/w2', null, widget],
   ['DENY', 'anonyme lit un message (S1)', anon, 'get', 'widgets/w1/messages/m1', message],
   ['DENY', 'anonyme liste les messages (S1)', anon, 'list', 'widgets/w1/messages/m1', message],
