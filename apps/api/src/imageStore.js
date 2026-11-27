@@ -1,17 +1,18 @@
-// Images de quiz dans le Firebase Storage de l'environnement, sous le même préfixe et avec la même
-// forme d'URL que le dashboard (`ImageUploader.jsx` : `quizs/<horodatage>_<nom>`, URL de
+// Images des widgets dans le Firebase Storage de l'environnement, sous le préfixe du format
+// (`images.prefix` de la description : `quizs`, `teasers`, `folders`, `factss`) et avec la même
+// forme d'URL que le dashboard (`ImageUploader.jsx` : `<type>s/<horodatage>_<nom>`, URL de
 // téléchargement à jeton). Les règles Storage ne s'appliquent pas au SDK Admin : le droit
 // d'écriture vient du rôle du compte de service sur ce seul bucket.
 //
 // Envois du Hub (`POST /images`, specs/003-hub-parity-images) : déposés sous `UPLOAD_PREFIX`, que
-// la règle de cycle de vie du bucket supprime après `UPLOAD_RETENTION_DAYS` jours. Un quiz qui les
-// utilise en reçoit une copie sous `quizs/` : une image envoyée puis abandonnée disparaît seule.
+// la règle de cycle de vie du bucket supprime après `UPLOAD_RETENTION_DAYS` jours. Un widget qui
+// les utilise en reçoit une copie sous son préfixe : une image envoyée puis abandonnée disparaît
+// seule.
 
 import { randomUUID } from 'node:crypto';
 import { unavailable } from './errors.js';
 import { ImageError } from './images.js';
 
-export const QUIZ_PREFIX = 'quizs';
 export const UPLOAD_PREFIX = 'hub-uploads';
 export const UPLOAD_RETENTION_DAYS = 7;
 

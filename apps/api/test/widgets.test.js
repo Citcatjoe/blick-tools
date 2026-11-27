@@ -4,13 +4,17 @@ import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import sharp from 'sharp';
-import { transformWidgetData, buildCalendarSaveData, buildTinderSaveData, buildQuizSaveData, WIDGET_FORMS } from '@rms/widget-model';
+import {
+  transformWidgetData, buildCalendarSaveData, buildTinderSaveData, buildQuizSaveData,
+  buildTeaserSaveData, buildFolderSaveData, buildNatinotesSaveData, buildPotmSaveData, buildFactsSaveData,
+  listTeamsForPicker, potmTeamsForContext, WIDGET_FORMS,
+} from '@rms/widget-model';
 import { createApp } from '../src/app.js';
 import { createCallerVerifier } from '../src/auth.js';
 import { AlreadyExistsError } from '../src/errors.js';
 import { ImageError, fetchImageSafely, isPublicAddress, toDashboardWebp, IMAGE_TARGET_BYTES } from '../src/images.js';
 import { UPLOAD_PREFIX, parseStorageUrl } from '../src/imageStore.js';
-import { parseDateTime } from '../src/dates.js';
+import { parseDate, parseDateTime } from '../src/dates.js';
 
 const AUDIENCE = 'https://blick-tools-api.test';
 const BASE = 'https://example.test/bl-tools-client-';
@@ -32,6 +36,20 @@ const fakeOidcClient = {
 // Horodatage factice : se comporte comme un Timestamp Firestore (`toDate()`).
 const fakeTimestamp = (date) => ({ toDate: () => new Date(date.getTime()) });
 
+// Effectifs (collection `teams`) : un joueur archivé, des équipes et joueurs dans le désordre.
+const TEAMS = [
+  {
+    id: 'suisse-m-football',
+    name: 'Suisse M – Football',
+    players: [
+      { id: 'yann-sommer', name: 'Yann Sommer', team: 'Suisse', img: null, archived: true },
+      { id: 'granit-xhaka', name: 'Granit Xhaka', team: 'Suisse', img: 'https://firebasestorage.googleapis.com/v0/b/bucket/o/portraits%2Fx.webp?alt=media&token=t', focal: { x: 40, y: 10, zoom: 1.5 } },
+      { id: 'breel-embolo', name: 'Breel Embolo' },
+    ],
+  },
+  { id: 'albanie', name: 'Albanie', players: [{ id: 'armando-broja', name: 'Armando Broja', team: 'Albanie' }] },
+];
+
 let docs;
 let nextId;
 let failNextCreate;
@@ -45,6 +63,7 @@ const store = {
     docs.set(id, doc);
   },
   async get(id) { return docs.get(id) ?? null; },
+  async listTeams() { return structuredClone(TEAMS); },
 };
 
 // Images : téléchargement factice ; conversion réelle sauf pour le contenu factice « image » ;
@@ -446,44 +465,328 @@ test('conversion comme le dashboard : WebP ≤ 1928 px et ≤ 75 Ko, y compris u
   await assert.rejects(toDashboardWebp(Buffer.from('<html>pas une image</html>')), ImageError);
 });
 
+// ---------------------------------------------------------------- teasers, dossiers, notes, joueur du match, faits (spec 005)
+
+const TEASER = {
+  label: 'Votations', title: 'Tout sur\nle 30 novembre', img: 'https://images.ringier.ch/t.jpg',
+  button: { text: 'Lire le dossier', href: 'https://www.blick.ch/fr/politique', newTab: true }, theme: 'Suisse',
+};
+const FOLDER = {
+  label: 'Mondial', labelColor: 'sport', name: 'Coupe du monde\n2026', img: 'https://images.ringier.ch/f.jpg',
+  buttons: [{ text: 'Programme', href: 'https://www.blick.ch/a' }, { text: 'Groupes', href: 'https://www.blick.ch/b', newTab: true }], theme: 'Sport',
+};
+const NATINOTES = {
+  title: 'Suisse – Kosovo', showRecap: false, theme: 'Sport',
+  players: [
+    { id: 'granit-xhaka', blickRating: 5, comment: '<p>Le <b>patron</b>.</p><script>alert(1)</script>' },
+    { id: 'armando-broja', blickRating: 3, comment: 'Discret' },
+  ],
+};
+const [POTM_TEAM_A, POTM_TEAM_B] = potmTeamsForContext('national');
+const POTM = {
+  context: 'national', category: 'Dames', text: 'Suisse – Norvège', date: '2026-12-20', theme: 'Sport',
+  players: [{ name: 'Alisha Lehmann', position: 'Attaquant', team: POTM_TEAM_A.name }, { name: 'Lia Wälti', position: 'Milieu', team: POTM_TEAM_B.name }],
+};
+const FACTS = {
+  title: 'Ajoie – Lausanne', date: '2026-07-01', theme: 'Sport',
+  items: [
+    { type: 'normal', icon: 'iconEye', title: 'Le fait', text: '<p>Un <i>record</i>.</p>' },
+    { type: 'quote', icon: 'iconQuote', title: 'Il l’a dit', text: 'Nous avons <b>gagné</b>', author: 'Le coach', picture: 'https://images.ringier.ch/q.jpg' },
+    { type: 'picture', icon: 'iconFingerUp', title: 'L’image', src: 'https://images.ringier.ch/p.jpg', text: '<p>Le but.</p>', caption: 'Keystone' },
+    { type: 'number', icon: 'iconHashtag', title: 'En chiffres', value: 3, text: 'buts en 10 minutes' },
+    { type: 'rating', title: 'Quelle note ?' },
+  ],
+};
+const docFrom = (record, id, author = 'Hub Rédaction') => transformWidgetData({ ...record, id, author, deleted: false }, { serverTimestamp: () => TS });
+const plain = (value) => JSON.parse(JSON.stringify(value));
+
+/** Création, rejeu idempotent (200, sans recopier d'image) puis contenu différent (409). */
+async function createAndReplay(resource, body, changed) {
+  const headers = { 'Idempotency-Key': `${resource}-1` };
+  const res = await call('POST', `/${resource}`, body, { headers });
+  assert.equal(res.status, 201, JSON.stringify(res.json.errors ?? ''));
+  const before = { fetched: fetched.length, stored: stored.length };
+  const replay = await call('POST', `/${resource}`, body, { headers });
+  assert.deepEqual([replay.status, replay.headers.get('idempotent-replayed'), replay.json], [200, 'true', res.json]);
+  assert.deepEqual({ fetched: fetched.length, stored: stored.length }, before, 'aucune image recopiée au rejeu');
+  assert.equal((await call('POST', `/${resource}`, changed, { headers })).status, 409);
+  return res.json;
+}
+
+test('POST /teasers : image copiée sous teasers/, titre en \\n littéral, document du dashboard ; GET ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('teasers', TEASER, { ...TEASER, label: 'Autre' });
+  assert.equal(embedUrl, `${BASE}teaser/?teaserDoc=${id}`);
+  assert.deepEqual(fetched, [TEASER.img]);
+  const img = storageUrl('teasers/1.webp');
+  const doc = docs.get(id);
+  assert.deepEqual(doc, docFrom(buildTeaserSaveData({ ...TEASER, img }), id));
+  assert.equal(doc.data.title, 'Tout sur\\nle 30 novembre');
+  assert.deepEqual(doc.stats, { views: 0, clicks: 0 });
+
+  Object.assign(doc.stats, { views: 9, clicks: 4 });
+  const got = await call('GET', `/teasers/${id}`);
+  assert.deepEqual(got.json, {
+    id, embedUrl, label: 'Votations', title: TEASER.title, img, button: TEASER.button, views: 9, clicks: 4, theme: 'Suisse', brand: 'blick',
+  });
+});
+
+test('POST /folders : boutons avec ids et clics à 0, image copiée sous folders/ ; GET avec clics par bouton ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('folders', FOLDER, { ...FOLDER, buttons: FOLDER.buttons.slice(0, 1) });
+  assert.equal(embedUrl, `${BASE}folder/?folderDoc=${id}`);
+  const img = storageUrl('folders/1.webp');
+  const doc = docs.get(id);
+  const ids = doc.data.buttons.map((button) => button.id);
+  assert.equal(new Set(ids).size, 2);
+  assert.deepEqual(doc, docFrom(buildFolderSaveData({ ...FOLDER, img, buttons: FOLDER.buttons.map((b, i) => ({ ...b, id: ids[i] })) }), id));
+  assert.deepEqual([doc.data.folderLabelColor, doc.data.folderName], ['bg-sport', 'Coupe du monde\\n2026']);
+  assert.deepEqual(doc.stats, { views: 0, buttonClicks: { [ids[0]]: 0, [ids[1]]: 0 } });
+
+  doc.stats.buttonClicks[ids[1]] = 6;
+  const got = await call('GET', `/folders/${id}`);
+  assert.deepEqual(got.json, {
+    id, embedUrl, label: 'Mondial', labelColor: 'sport', name: FOLDER.name, img,
+    buttons: [
+      { id: ids[0], text: 'Programme', href: 'https://www.blick.ch/a', newTab: false, clicks: 0 },
+      { id: ids[1], text: 'Groupes', href: 'https://www.blick.ch/b', newTab: true, clicks: 6 },
+    ],
+    views: 0, theme: 'Sport', brand: 'blick',
+  });
+});
+
+test('POST /natinotes : joueurs copiés depuis les effectifs, paragraphe nettoyé ; GET avec notes des lecteurs ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('natinotes', NATINOTES, { ...NATINOTES, title: 'Autre' });
+  assert.equal(embedUrl, `${BASE}natinotes/?natinotesDoc=${id}`);
+  assert.deepEqual(fetched, [], 'aucune image téléchargée');
+  const doc = docs.get(id);
+  assert.deepEqual(doc, docFrom(buildNatinotesSaveData(NATINOTES, { teams: TEAMS }), id));
+  const [xhaka, broja] = doc.data.players;
+  assert.deepEqual([xhaka.name, xhaka.team, xhaka.img, xhaka.focal], ['Granit Xhaka', 'Suisse', TEAMS[0].players[1].img, { x: 40, y: 10, zoom: 1.5 }]);
+  assert.deepEqual([broja.team, broja.img], ['Albanie', null]);
+  assert.ok(!xhaka.comment.includes('<script'), xhaka.comment);
+  assert.ok(xhaka.comment.includes('<strong>patron</strong>'), xhaka.comment);
+  assert.deepEqual([doc.data.label, doc.data.showRecap, doc.stats], ['', false, { views: 0, playerRatings: {} }]);
+
+  doc.stats.playerRatings = { 'granit-xhaka': { 5: 40, 6: 8 } };
+  const got = await call('GET', `/natinotes/${id}`);
+  assert.deepEqual(got.json, {
+    id, embedUrl, title: 'Suisse – Kosovo', showRecap: false,
+    players: [
+      { id: 'granit-xhaka', name: 'Granit Xhaka', team: 'Suisse', img: xhaka.img, blickRating: 5, comment: xhaka.comment, ratings: { 5: 40, 6: 8 } },
+      { id: 'armando-broja', name: 'Armando Broja', team: 'Albanie', img: null, blickRating: 3, comment: broja.comment, ratings: {} },
+    ],
+    views: 0, theme: 'Sport', brand: 'blick',
+  });
+});
+
+test('POST /natinotes : joueur inconnu, archivé ou en double → 400 sur players[i].id, rien d\'écrit', async () => {
+  const players = [
+    { id: 'inconnu', blickRating: 4, comment: 'x' },
+    { id: 'yann-sommer', blickRating: 4, comment: 'x' },
+    { id: 'breel-embolo', blickRating: 4, comment: 'x' },
+    { id: 'breel-embolo', blickRating: 4, comment: 'x' },
+  ];
+  const res = await call('POST', '/natinotes', { ...NATINOTES, players });
+  assert.equal(res.status, 400);
+  assert.deepEqual(fields(res), [['players[0].id', 'invalid_value'], ['players[1].id', 'invalid_value'], ['players[3].id', 'duplicate']]);
+  assert.equal(docs.size, 0);
+});
+
+test('POST /potms : date à midi heure suisse, postes accordés (Dames), équipes du contexte ; GET avec votes ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('potms', POTM, { ...POTM, date: '2026-12-21' });
+  assert.equal(embedUrl, `${BASE}potm/?potmDoc=${id}`);
+  const doc = docs.get(id);
+  const ids = doc.data.players.map((player) => player.id);
+  const expected = docFrom(buildPotmSaveData({ ...POTM, date: parseDate(POTM.date), players: POTM.players.map((p, i) => ({ ...p, id: ids[i] })) }, { toTimestamp: fakeTimestamp }), id);
+  assert.deepEqual(plain(doc), plain(expected));
+  assert.equal(doc.data.context.date.toDate().toISOString(), '2026-12-20T11:00:00.000Z'); // midi en hiver = UTC+1
+  assert.deepEqual(doc.data.players.map((p) => [p.position, p.team, p.code, p.color]), [
+    ['Attaquante', POTM_TEAM_A.name, POTM_TEAM_A.code, POTM_TEAM_A.color],
+    ['Milieu', POTM_TEAM_B.name, POTM_TEAM_B.code, POTM_TEAM_B.color],
+  ]);
+  assert.deepEqual(doc.stats, { views: 0, playersVotes: { [ids[0]]: 0, [ids[1]]: 0 } });
+
+  doc.stats.playersVotes[ids[0]] = 12;
+  const got = await call('GET', `/potms/${id}`);
+  assert.deepEqual(got.json, {
+    id, embedUrl, context: 'national', category: 'Dames', text: 'Suisse – Norvège', date: '2026-12-20',
+    players: [
+      { id: ids[0], name: 'Alisha Lehmann', position: 'Attaquante', team: POTM_TEAM_A.name, votes: 12 },
+      { id: ids[1], name: 'Lia Wälti', position: 'Milieu', team: POTM_TEAM_B.name, votes: 0 },
+    ],
+    views: 0, theme: 'Sport', brand: 'blick',
+  });
+});
+
+test('POST /potms : date illisible, équipe d\'un autre contexte → 400 sur leur chemin', async () => {
+  const [hockey] = potmTeamsForContext('national_league');
+  const res = await call('POST', '/potms', { ...POTM, date: '2026-02-30', players: [POTM.players[0], { ...POTM.players[1], team: hockey.name }] });
+  assert.equal(res.status, 400);
+  assert.deepEqual(fields(res), [['date', 'invalid_value'], ['players[1].team', 'invalid_value']]);
+  assert.equal(docs.size, 0);
+});
+
+test('POST /facts : items par type, images copiées sous factss/, date à midi ; GET avec reveal et ratingStats ; rejeu', async () => {
+  const { id, embedUrl } = await createAndReplay('facts', FACTS, { ...FACTS, items: FACTS.items.slice(0, 4) });
+  assert.equal(embedUrl, `${BASE}facts/?factsDoc=${id}`);
+  assert.deepEqual(fetched, ['https://images.ringier.ch/q.jpg', 'https://images.ringier.ch/p.jpg'], 'ordre du formulaire');
+  const doc = docs.get(id);
+  const ids = doc.data.items.map((item) => item.id);
+  assert.equal(new Set(ids).size, 5);
+  const copies = { 1: { picture: storageUrl('factss/1.webp') }, 2: { src: storageUrl('factss/2.webp') } };
+  const expected = docFrom(buildFactsSaveData({
+    ...FACTS, date: parseDate(FACTS.date), items: FACTS.items.map((item, i) => ({ ...item, ...copies[i], id: ids[i] })),
+  }, { toTimestamp: fakeTimestamp }), id);
+  assert.deepEqual(plain(doc), plain(expected));
+  assert.equal(doc.data.date.toDate().toISOString(), '2026-07-01T10:00:00.000Z'); // midi en été = UTC+2
+  assert.deepEqual([doc.data.items[1].picture, doc.data.items[2].src], [copies[1].picture, copies[2].src]);
+  assert.ok(!JSON.stringify(doc).includes('images.ringier.ch'));
+  assert.deepEqual(doc.stats, { views: 0, reveal: 0, ratingStats: {} });
+
+  Object.assign(doc.stats, { reveal: 3, ratingStats: { 8: 2, 10: 1 } });
+  const got = await call('GET', `/facts/${id}`);
+  assert.deepEqual([got.json.title, got.json.date, got.json.reveal, got.json.ratingStats, got.json.views], ['Ajoie – Lausanne', '2026-07-01', 3, { 8: 2, 10: 1 }, 0]);
+  assert.deepEqual(got.json.items.map(({ id: itemId, type, title }) => [itemId, type, title]), FACTS.items.map((item, i) => [ids[i], item.type, item.title]));
+  assert.deepEqual([got.json.items[1].picture, got.json.items[2].src, got.json.items[2].caption, got.json.items[3].value], [copies[1].picture, copies[2].src, 'Keystone', 3]);
+});
+
+test('POST /facts : champ d\'un autre type, deuxième item « rating » → 400 sur leur chemin', async () => {
+  const res = await call('POST', '/facts', {
+    ...FACTS,
+    items: [{ ...FACTS.items[0], src: 'https://images.ringier.ch/x.jpg' }, FACTS.items[4], FACTS.items[4]],
+  });
+  assert.equal(res.status, 400);
+  assert.deepEqual(fields(res), [['items[0].src', 'unknown_field'], ['items[2].type', 'too_many']]);
+  assert.deepEqual([docs.size, fetched], [0, []]);
+});
+
+test('images des nouveaux formats : illisible → 400 sur son chemin, copies supprimées ; envoi POST /images copié sous le préfixe', async () => {
+  const teaser = await call('POST', '/teasers', { ...TEASER, img: 'https://cdn.example/broken.jpg' });
+  assert.deepEqual(fields(teaser), [['img', 'invalid_value']]);
+  assert.match(teaser.json.errors[0].message, /^Image du teaser : /);
+
+  const facts = await call('POST', '/facts', { ...FACTS, items: [FACTS.items[1], FACTS.items[0], { ...FACTS.items[2], src: 'https://cdn.example/notimage.jpg' }] });
+  assert.deepEqual(fields(facts), [['items[2].src', 'invalid_value']]);
+  assert.match(facts.json.errors[0].message, /^Fait marquant 3 : /);
+  assert.deepEqual([stored, removed, docs.size], [['factss/1.webp'], ['factss/1.webp'], 0]);
+
+  const sent = await upload(await photo(), 'image/jpeg');
+  const folder = await call('POST', '/folders', { ...FOLDER, img: sent.json.url });
+  assert.equal(folder.status, 201);
+  assert.equal(docs.get(folder.json.id).data.img, storageUrl('folders/3.webp'), 'copie sous folders/, indépendante de l\'envoi');
+
+  failNextCreate = true;
+  removed = [];
+  assert.equal((await call('POST', '/teasers', TEASER)).status, 500);
+  assert.deepEqual(removed, ['teasers/4.webp']);
+});
+
+test('GET /teams : effectifs triés par nom, joueurs archivés exclus ; 401 / 403 / 405', async () => {
+  const res = await call('GET', '/teams');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.json, plain({ teams: listTeamsForPicker(TEAMS) }));
+  assert.deepEqual(res.json.teams.map((team) => [team.name, team.players.map((player) => player.id)]), [
+    ['Albanie', ['armando-broja']],
+    ['Suisse M – Football', ['breel-embolo', 'granit-xhaka']],
+  ]);
+  assert.deepEqual(res.json.teams[1].players[0], { id: 'breel-embolo', name: 'Breel Embolo', team: 'Suisse M – Football', img: null, focal: res.json.teams[1].players[0].focal });
+  assert.equal((await call('GET', '/teams', undefined, { token: null })).status, 401);
+  assert.equal((await call('GET', '/teams', undefined, { token: 'stranger' })).status, 403);
+  const post = await call('POST', '/teams', {});
+  assert.deepEqual([post.status, post.headers.get('allow')], [405, 'GET']);
+});
+
+test('routage : une ressource par format décrit (hors sondage), autre format ou chemin → 404, autre méthode → 405', async () => {
+  for (const form of WIDGET_FORMS.filter(({ type }) => type !== 'poll')) {
+    const missing = await call('GET', `/${form.resource}/inconnu`);
+    assert.deepEqual([missing.status, missing.json.code], [404, 'NOT_FOUND'], form.resource);
+    const put = await call('PUT', `/${form.resource}`, {});
+    assert.deepEqual([put.status, put.headers.get('allow')], [405, 'POST'], form.resource);
+    const del = await call('DELETE', `/${form.resource}/x`);
+    assert.deepEqual([del.status, del.headers.get('allow')], [405, 'GET'], form.resource);
+    assert.equal((await call('POST', `/${form.resource}`, {}, { token: null })).status, 401, form.resource);
+  }
+  const teaser = await call('POST', '/teasers', TEASER);
+  assert.equal((await call('GET', `/folders/${teaser.json.id}`)).status, 404, 'id d\'un autre format');
+  for (const path of ['/testimonies', '/testimony', '/pronos', '/prono', '/teasers/a/b', '/teams/x', '/constructor', '/__proto__', '/hasOwnProperty/x']) {
+    assert.equal((await call('POST', path, {})).status, 404, path);
+  }
+});
+
 // ---------------------------------------------------------------- description des formulaires (spec 004)
 
-const VALUES = { text: 'Texte', textarea: 'Texte', url: 'https://www.blick.ch', datetime: '2026-12-20T20:45', checkbox: true, image: 'https://images.ringier.ch/a.jpg' };
+const VALUES = {
+  text: 'Texte', textarea: 'Texte', url: 'https://www.blick.ch', datetime: '2026-12-20T20:45', date: '2026-12-20',
+  richtext: '<p>Texte</p>', checkbox: true, image: 'https://images.ringier.ch/a.jpg',
+};
+const PICKER_PLAYERS = listTeamsForPicker(TEAMS).flatMap((team) => team.players);
+
+/** Valeur d'un champ simple ; `root` : requête en cours (options qui dépendent d'un champ racine). */
+function valueFor(field, root) {
+  if (field.kind === 'choice') {
+    if (field.source === 'teams') return PICKER_PLAYERS[0].id;
+    const options = field.dependsOn ? field.optionsBy[root[field.dependsOn] ?? Object.keys(field.optionsBy)[0]] : field.options;
+    return options[0].value;
+  }
+  if (field.kind === 'number') return field.min ?? 1;
+  if (field.kind === 'richtext') return field.inline ? 'Texte' : VALUES.richtext;
+  return VALUES[field.kind];
+}
+
+/** Champs d'un élément de liste : communs, puis ceux de la variante. */
+const itemFields = (field, option) => [...(field.fields ?? []), ...(option?.fields ?? [])];
 
 /**
  * Requête construite à partir de la description seule : champs obligatoires (`all` : tous les
- * champs), listes au nombre minimal d'éléments, bonne réponse sur le premier élément.
+ * champs), listes au nombre minimal d'éléments, bonne réponse sur le premier élément. Listes à
+ * variantes : la première variante (`all` : un élément par variante).
  */
-function sampleFrom(fields, { all = false } = {}) {
+function sampleFrom(fields, { all = false, root } = {}) {
   const out = {};
+  const top = root ?? out;
   for (const field of fields) {
-    if (field.kind === 'list') {
-      const item = () => (field.item ? VALUES[field.item.kind] : sampleFrom(field.fields, { all }));
+    if (field.kind === 'list' && field.variants) {
+      const options = all ? [...field.variants.options] : [];
+      while (options.length < Math.max(field.min, 1)) options.push(field.variants.options[0]);
+      out[field.key] = options.map((option) => ({ [field.variants.key]: option.value, ...sampleFrom(itemFields(field, option), { all, root: top }) }));
+    } else if (field.kind === 'list') {
+      const item = () => (field.item ? VALUES[field.item.kind] : sampleFrom(field.fields, { all, root: top }));
       out[field.key] = Array.from({ length: Math.max(field.min, 1) }, item);
       if (field.correct) out[field.key][0][field.correct] = true;
     } else if (field.required || all) {
-      if (field.kind === 'group') out[field.key] = sampleFrom(field.fields, { all });
-      else if (field.kind === 'choice') out[field.key] = field.options[0].value;
-      else out[field.key] = VALUES[field.kind];
+      if (field.kind === 'group') out[field.key] = sampleFrom(field.fields, { all, root: top });
+      else out[field.key] = valueFor(field, top);
     }
   }
   return out;
 }
 
-/** Chemins des champs obligatoires (dans le premier élément des listes) : [chemin, champs parents]. */
+/** Chemins des champs obligatoires (dans le premier élément des listes, de la première variante). */
 function requiredPaths(fields, at = '') {
   const paths = [];
   for (const field of fields) {
     const path = `${at}${field.key}`;
     if (field.kind === 'list') {
       paths.push(path);
-      if (field.fields) paths.push(...requiredPaths(field.fields, `${path}[0].`));
+      if (field.variants) paths.push(`${path}[0].${field.variants.key}`);
+      const first = field.variants ? itemFields(field, field.variants.options[0]) : field.fields;
+      if (first) paths.push(...requiredPaths(first, `${path}[0].`));
     } else if (field.required) {
       paths.push(path);
       if (field.kind === 'group') paths.push(...requiredPaths(field.fields, `${path}.`));
     }
   }
   return paths;
+}
+
+/** Champs `number` bornés présents dans l'exemple minimal : [chemin, champ]. */
+function boundedNumbers(fields, at = '') {
+  return fields.flatMap((field) => {
+    const path = `${at}${field.key}`;
+    if (field.kind === 'number' && field.required && (field.min !== undefined || field.max !== undefined)) return [[path, field]];
+    if (field.kind === 'group' && field.required) return boundedNumbers(field.fields, `${path}.`);
+    if (field.kind === 'list' && !field.item) return boundedNumbers(itemFields(field, field.variants?.options[0]), `${path}[0].`);
+    return [];
+  });
 }
 
 /** Retire (ou remplace) la valeur au chemin `a.b[0].c` d'une copie de la requête. */
@@ -496,10 +799,13 @@ function withPath(request, path, value) {
   return copy;
 }
 
-test('GET /widget-types : la description des 4 formats, telle que dans le modèle partagé', async () => {
+test('GET /widget-types : la description des 9 formats, telle que dans le modèle partagé', async () => {
   const res = await call('GET', '/widget-types');
   assert.equal(res.status, 200);
-  assert.deepEqual(res.json.formats.map((f) => [f.type, f.resource]), [['poll', 'polls'], ['calendar', 'calendars'], ['tinder', 'tinders'], ['quiz', 'quizzes']]);
+  assert.deepEqual(res.json.formats.map((f) => [f.type, f.resource]), [
+    ['poll', 'polls'], ['calendar', 'calendars'], ['tinder', 'tinders'], ['quiz', 'quizzes'],
+    ['teaser', 'teasers'], ['folder', 'folders'], ['natinotes', 'natinotes'], ['potm', 'potms'], ['facts', 'facts'],
+  ]);
   assert.deepEqual(res.json.formats, JSON.parse(JSON.stringify(WIDGET_FORMS)));
   assert.equal((await call('GET', '/widget-types', undefined, { token: null })).status, 401);
   assert.equal((await call('GET', '/widget-types', undefined, { token: 'stranger' })).status, 403);
@@ -548,6 +854,22 @@ for (const form of WIDGET_FORMS) {
         const none = withPath(minimal, `${path}[0].${field.correct}`);
         const res = await call('POST', `/${form.resource}`, none);
         assert.ok(res.json.errors?.some((e) => e.field === `${parent}.correctAnswer`), `${path} sans bonne réponse : ${JSON.stringify(fields(res))}`);
+      }
+      // Variante limitée (un seul item « note » des faits du match) : max + 1 éléments refusés.
+      for (const option of field.variants?.options ?? []) {
+        if (option.max === undefined || option.max === null) continue;
+        const item = { [field.variants.key]: option.value, ...sampleFrom(itemFields(field, option), { root: minimal }) };
+        const res = await call('POST', `/${form.resource}`, withPath(minimal, path, Array.from({ length: option.max + 1 }, () => structuredClone(item))));
+        assert.equal(res.status, 400, `${path} : ${option.max + 1} × ${option.value}`);
+        assert.ok(res.json.errors.some((e) => e.field.startsWith(path)), `${path} : variante ${option.value} au-delà du maximum : ${JSON.stringify(fields(res))}`);
+      }
+    }
+
+    for (const [path, field] of boundedNumbers(form.fields)) {
+      for (const value of [field.min - 1, field.max + 1, 1.5]) {
+        if (Number.isNaN(value)) continue;
+        const res = await call('POST', `/${form.resource}`, withPath(minimal, path, value));
+        assert.ok(res.json.errors?.some((e) => e.field === path), `${path} = ${value} refusé : ${JSON.stringify(res.json.errors ?? res.status)}`);
       }
     }
   });

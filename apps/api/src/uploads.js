@@ -1,6 +1,6 @@
 // `POST /images` (specs/003-hub-parity-images) : le Hub envoie le fichier choisi par le journaliste
 // (corps brut), l'API le traite comme une image importée par URL (WebP, ≤ 1928 px, ≈ 75 Ko) et le
-// dépose sous le préfixe des envois, d'où un quiz le copiera.
+// dépose sous le préfixe des envois, d'où le widget qui l'utilise le copiera.
 
 import { validationFailed } from './errors.js';
 import { IMAGE_MAX_BYTES, ImageError } from './images.js';

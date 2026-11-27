@@ -1,6 +1,8 @@
 // Date-heure ISO 8601 des calendriers (specs/002-hub-widgets-api, clarification Q3) :
 // avec décalage (`Z`, `+01:00`) → instant exact ; sans décalage → heure murale suisse
 // (Europe/Zurich, heure d'été gérée), comme la saisie `datetime-local` du dashboard.
+// Date seule (joueur du match, faits du match — specs/005-hub-all-formats) : midi heure suisse,
+// comme le dashboard (`new Date(date + 'T12:00:00')` sur un poste en Suisse).
 
 export const DEFAULT_TIME_ZONE = 'Europe/Zurich';
 
@@ -54,4 +56,27 @@ export function parseDateTime(value) {
   utc = wall - (wallClockAsUtc(utc) - utc);
   const wallMsPart = wall - Math.floor(wall / 1000) * 1000;
   return wallClockAsUtc(utc - wallMsPart) + wallMsPart === wall ? new Date(utc) : null;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * @param {unknown} value date seule « 2026-12-20 »
+ * @returns {Date | null} midi heure suisse ce jour-là ; `null` si la valeur n'est pas une date
+ *   seule valide.
+ */
+export function parseDate(value) {
+  if (typeof value !== 'string') return null;
+  const date = value.trim();
+  return ISO_DATE.test(date) ? parseDateTime(`${date}T12:00`) : null;
+}
+
+const dayFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: DEFAULT_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+/** Jour suisse d'un instant, au format de `parseDate` (« 2026-12-20 »). */
+export function formatDate(date) {
+  const parts = Object.fromEntries(dayFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }

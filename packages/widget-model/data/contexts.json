@@ -1,0 +1,10 @@
+[
+  {
+    "label": "Equipes nationales",
+    "type": "national"
+  },
+  {
+    "label": "Hockey - National League",
+    "type": "national_league"
+  }
+]

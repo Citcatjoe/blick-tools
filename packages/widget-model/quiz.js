@@ -4,6 +4,8 @@
 
 import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkText, checkTheme, errorCollector, isMissing, newId, trimOrEmpty } from './common.js';
 
+/** Préfixe Storage des images des questions (dashboard et API). */
+export const QUIZ_IMAGE_PREFIX = 'quizs';
 export const QUIZ_ANSWERS_PER_QUESTION = 4;
 export const QUIZ_CONCLUSION_KEYS = Object.freeze(['text1', 'text2', 'text3']);
 /** Tranche de score de chaque texte de conclusion. */

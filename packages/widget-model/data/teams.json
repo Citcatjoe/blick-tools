@@ -1,0 +1,412 @@
+[
+  {
+    "name": "Afrique du Sud",
+    "code": "za",
+    "color": "#007749",
+    "type": "national"
+  },
+  {
+    "name": "Algérie",
+    "code": "dz",
+    "color": "#006633",
+    "type": "national"
+  },
+  {
+    "name": "Allemagne",
+    "code": "de",
+    "color": "#000000",
+    "type": "national"
+  },
+  {
+    "name": "Angleterre",
+    "code": "gb-eng",
+    "color": "#CE1126",
+    "type": "national"
+  },
+  {
+    "name": "Arabie Saoudite",
+    "code": "sa",
+    "color": "#006C35",
+    "type": "national"
+  },
+  {
+    "name": "Argentine",
+    "code": "ar",
+    "color": "#75AADB",
+    "type": "national"
+  },
+  {
+    "name": "Australie",
+    "code": "au",
+    "color": "#FFCD00",
+    "type": "national"
+  },
+  {
+    "name": "Autriche",
+    "code": "at",
+    "color": "#ED2939",
+    "type": "national"
+  },
+  {
+    "name": "Belgique",
+    "code": "be",
+    "color": "#EF3340",
+    "type": "national"
+  },
+  {
+    "name": "Brésil",
+    "code": "br",
+    "color": "#FFDC00",
+    "type": "national"
+  },
+  {
+    "name": "Canada",
+    "code": "ca",
+    "color": "#FF0000",
+    "type": "national"
+  },
+  {
+    "name": "Cap-Vert",
+    "code": "cv",
+    "color": "#003893",
+    "type": "national"
+  },
+  {
+    "name": "Colombie",
+    "code": "co",
+    "color": "#FCD116",
+    "type": "national"
+  },
+  {
+    "name": "Corée du Sud",
+    "code": "kr",
+    "color": "#CD2E3A",
+    "type": "national"
+  },
+  {
+    "name": "Croatie",
+    "code": "hr",
+    "color": "#FF0000",
+    "type": "national"
+  },
+  {
+    "name": "Curaçao",
+    "code": "cw",
+    "color": "#002B7F",
+    "type": "national"
+  },
+  {
+    "name": "Côte d'Ivoire",
+    "code": "ci",
+    "color": "#FF8200",
+    "type": "national"
+  },
+  {
+    "name": "Danemark",
+    "code": "dk",
+    "color": "#C60C30",
+    "type": "national"
+  },
+  {
+    "name": "Écosse",
+    "code": "gb-sct",
+    "color": "#005EB8",
+    "type": "national"
+  },
+  {
+    "name": "Égypte",
+    "code": "eg",
+    "color": "#CE1126",
+    "type": "national"
+  },
+  {
+    "name": "Équateur",
+    "code": "ec",
+    "color": "#FFDD00",
+    "type": "national"
+  },
+  {
+    "name": "Espagne",
+    "code": "es",
+    "color": "#C60B1E",
+    "type": "national"
+  },
+  {
+    "name": "États-Unis",
+    "code": "us",
+    "color": "#3C3B6E",
+    "type": "national"
+  },
+  {
+    "name": "Finlande",
+    "code": "fi",
+    "color": "#002F6C",
+    "type": "national"
+  },
+  {
+    "name": "France",
+    "code": "fr",
+    "color": "#002395",
+    "type": "national"
+  },
+  {
+    "name": "Ghana",
+    "code": "gh",
+    "color": "#FCD116",
+    "type": "national"
+  },
+  {
+    "name": "Grande-Bretagne",
+    "code": "gb",
+    "color": "#012169",
+    "type": "national"
+  },
+  {
+    "name": "Haïti",
+    "code": "ht",
+    "color": "#00209F",
+    "type": "national"
+  },
+  {
+    "name": "Hongrie",
+    "code": "hu",
+    "color": "#CE1126",
+    "type": "national"
+  },
+  {
+    "name": "Iran",
+    "code": "ir",
+    "color": "#239E46",
+    "type": "national"
+  },
+  {
+    "name": "Italie",
+    "code": "it",
+    "color": "#004B87",
+    "type": "national"
+  },
+  {
+    "name": "Japon",
+    "code": "jp",
+    "color": "#000555",
+    "type": "national"
+  },
+  {
+    "name": "Jordanie",
+    "code": "jo",
+    "color": "#CE1126",
+    "type": "national"
+  },
+  {
+    "name": "Lettonie",
+    "code": "lv",
+    "color": "#9E3039",
+    "type": "national"
+  },
+  {
+    "name": "Maroc",
+    "code": "ma",
+    "color": "#C1272D",
+    "type": "national"
+  },
+  {
+    "name": "Mexique",
+    "code": "mx",
+    "color": "#006847",
+    "type": "national"
+  },
+  {
+    "name": "Norvège",
+    "code": "no",
+    "color": "#EF2B2D",
+    "type": "national"
+  },
+  {
+    "name": "Nouvelle-Zélande",
+    "code": "nz",
+    "color": "#000000",
+    "type": "national"
+  },
+  {
+    "name": "Ouzbékistan",
+    "code": "uz",
+    "color": "#0099B5",
+    "type": "national"
+  },
+  {
+    "name": "Panama",
+    "code": "pa",
+    "color": "#005293",
+    "type": "national"
+  },
+  {
+    "name": "Paraguay",
+    "code": "py",
+    "color": "#D52B1E",
+    "type": "national"
+  },
+  {
+    "name": "Pays-Bas",
+    "code": "nl",
+    "color": "#FF4F00",
+    "type": "national"
+  },
+  {
+    "name": "Portugal",
+    "code": "pt",
+    "color": "#FF0000",
+    "type": "national"
+  },
+  {
+    "name": "Qatar",
+    "code": "qa",
+    "color": "#8D1B3D",
+    "type": "national"
+  },
+  {
+    "name": "Sénégal",
+    "code": "sn",
+    "color": "#00853F",
+    "type": "national"
+  },
+  {
+    "name": "Slovaquie",
+    "code": "sk",
+    "color": "#0B4EA2",
+    "type": "national"
+  },
+  {
+    "name": "Slovénie",
+    "code": "si",
+    "color": "#0B4EA2",
+    "type": "national"
+  },
+  {
+    "name": "Suède",
+    "code": "se",
+    "color": "#FECC00",
+    "type": "national"
+  },
+  {
+    "name": "Suisse",
+    "code": "ch",
+    "color": "#DA291C",
+    "type": "national"
+  },
+  {
+    "name": "Tchéquie",
+    "code": "cz",
+    "color": "#D7141A",
+    "type": "national"
+  },
+  {
+    "name": "Tunisie",
+    "code": "tn",
+    "color": "#E70013",
+    "type": "national"
+  },
+  {
+    "name": "Uruguay",
+    "code": "uy",
+    "color": "#0081C8",
+    "type": "national"
+  },
+  {
+    "name": "Ajoie",
+    "code": "hca",
+    "color": "#FFCC00",
+    "type": "national_league",
+    "img": "ch_ajoie.png"
+  },
+  {
+    "name": "Ambri-Piotta",
+    "code": "amb",
+    "color": "#003366",
+    "type": "national_league",
+    "img": "ch_ambri.png"
+  },
+  {
+    "name": "Berne",
+    "code": "scb",
+    "color": "#E1001A",
+    "type": "national_league",
+    "img": "ch_berne.png"
+  },
+  {
+    "name": "Bienne",
+    "code": "ehcb",
+    "color": "#D11117",
+    "type": "national_league",
+    "img": "ch_bienne.png"
+  },
+  {
+    "name": "Davos",
+    "code": "hcd",
+    "color": "#FFED00",
+    "type": "national_league",
+    "img": "ch_davos.png"
+  },
+  {
+    "name": "Fribourg Gottéron",
+    "code": "fri",
+    "color": "#000000",
+    "type": "national_league",
+    "img": "ch_fribourg.png"
+  },
+  {
+    "name": "Genève-Servette",
+    "code": "gen",
+    "color": "#581018",
+    "type": "national_league",
+    "img": "ch_geneve.png"
+  },
+  {
+    "name": "Kloten",
+    "code": "klo",
+    "color": "#005DAA",
+    "type": "national_league",
+    "img": "ch_kloten.png"
+  },
+  {
+    "name": "Langnau",
+    "code": "scl",
+    "color": "#E30613",
+    "type": "national_league",
+    "img": "ch_langnau.png"
+  },
+  {
+    "name": "Lausanne",
+    "code": "lhc",
+    "color": "#E4002B",
+    "type": "national_league",
+    "img": "ch_lausanne.png"
+  },
+  {
+    "name": "Lugano",
+    "code": "hcl",
+    "color": "#000000",
+    "type": "national_league",
+    "img": "ch_lugano.png"
+  },
+  {
+    "name": "Rapperswil",
+    "code": "rap",
+    "color": "#C00505",
+    "type": "national_league",
+    "img": "ch_rapperswil.png"
+  },
+  {
+    "name": "Zoug",
+    "code": "evz",
+    "color": "#0061A0",
+    "type": "national_league",
+    "img": "ch_zoug.png"
+  },
+  {
+    "name": "Zurich",
+    "code": "zsc",
+    "color": "#0068B5",
+    "type": "national_league",
+    "img": "ch_zuerich.png"
+  }
+]

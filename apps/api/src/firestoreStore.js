@@ -17,11 +17,13 @@ function translate(error) {
 }
 
 /**
- * Accès à la collection `widgets` via le SDK Admin (compte de service du service Cloud Run).
+ * Accès à la collection `widgets` via le SDK Admin (compte de service du service Cloud Run), et
+ * lecture seule des effectifs `teams` (notes des joueurs, specs/005-hub-all-formats).
  * @param {import('firebase-admin/firestore').Firestore} firestore
  */
 export function createFirestoreStore(firestore) {
   const widgets = firestore.collection('widgets');
+  const teams = firestore.collection('teams');
   return {
     serverTimestamp: () => FieldValue.serverTimestamp(),
     toTimestamp: (date) => Timestamp.fromDate(date),
@@ -37,6 +39,15 @@ export function createFirestoreStore(firestore) {
       try {
         const snapshot = await widgets.doc(id).get();
         return snapshot.exists ? snapshot.data() : null;
+      } catch (error) {
+        throw translate(error);
+      }
+    },
+    /** Documents `teams` tels quels : `[{ id, name, players: [...] }]`. */
+    async listTeams() {
+      try {
+        const snapshot = await teams.get();
+        return snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
       } catch (error) {
         throw translate(error);
       }

@@ -27,7 +27,7 @@ export function loadConfig(env) {
     problems.push('CLIENT_BASE_URL doit être une URL https se terminant par "/bl-tools-client-"');
   }
 
-  // Bucket Firebase Storage de l'environnement (images de quiz) = VITE_FIREBASE_STORAGE_BUCKET.
+  // Bucket Firebase Storage de l'environnement (images des widgets) = VITE_FIREBASE_STORAGE_BUCKET.
   const storageBucket = env.STORAGE_BUCKET?.trim();
   if (!storageBucket) {
     problems.push('STORAGE_BUCKET manquante (bucket Firebase Storage de l\'environnement)');

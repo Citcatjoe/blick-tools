@@ -5,4 +5,5 @@
 !apps/*/package.json
 !packages/*/package.json
 !packages/widget-model/*.js
+!packages/widget-model/data/*.json
 !apps/api/src/**

@@ -1,8 +1,9 @@
-// Images de quiz (specs/002-hub-widgets-api, clarification Q2) : téléchargées depuis une URL https
-// fournie par le Hub, puis converties comme dans le dashboard (`ImageUploader.jsx` : WebP,
-// ≤ 1928 px, ≈ 75 Ko). Le téléchargement part d'un service qui a accès au réseau interne de
-// Google Cloud : chaque connexion est vérifiée contre les adresses privées (anti-SSRF), au moment
-// même de la résolution DNS (pas de fenêtre entre vérification et connexion).
+// Images des widgets (specs/002-hub-widgets-api clarification Q2, specs/005-hub-all-formats) :
+// téléchargées depuis une URL https fournie par le Hub, puis converties comme dans le dashboard
+// (`ImageUploader.jsx` : WebP, ≤ 1928 px, ≈ 75 Ko). Le téléchargement part d'un service qui a
+// accès au réseau interne de Google Cloud : chaque connexion est vérifiée contre les adresses
+// privées (anti-SSRF), au moment même de la résolution DNS (pas de fenêtre entre vérification et
+// connexion).
 
 import https from 'node:https';
 import dns from 'node:dns';
@@ -15,7 +16,7 @@ export const IMAGE_MAX_REDIRECTS = 3;
 export const IMAGE_MAX_DIMENSION = 1928;
 export const IMAGE_TARGET_BYTES = 75 * 1024;
 export const IMAGE_MIN_DIMENSION = 480;
-export const IMAGE_USER_AGENT = 'BlickToolsAPI/1.0 (+https://www.blick.ch; import d\'images de quiz)';
+export const IMAGE_USER_AGENT = 'BlickToolsAPI/1.0 (+https://www.blick.ch; import d\'images de widgets)';
 
 /**
  * Erreur d'image imputable à l'appelant (→ 400 sur le champ de l'image). `code` : `invalid_type`

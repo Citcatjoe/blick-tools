@@ -2,7 +2,7 @@ import { ApiError, sendJson, sendProblem } from './errors.js';
 import { parseCreatePollRequest, parseIdempotencyKey, createPoll, getPoll, updatePoll } from './polls.js';
 import { RESOURCE_TYPES, parseCreateRequest, createWidget, getWidget } from './widgets.js';
 import { uploadImage } from './uploads.js';
-import { WIDGET_FORMS } from '@rms/widget-model';
+import { WIDGET_FORMS, listTeamsForPicker } from '@rms/widget-model';
 
 export const MAX_BODY_BYTES = 64 * 1024;
 
@@ -85,8 +85,21 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
         return;
       }
 
+      // Effectifs des notes des joueurs (specs/005) : le Hub propose les joueurs de `natinotes`.
+      if (pathname === '/teams') {
+        if (req.method !== 'GET') {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: 'GET' } });
+        }
+        caller = await verifyCaller(req.headers.authorization);
+        sendJson(res, 200, { teams: listTeamsForPicker(await store.listTeams()) });
+        log('INFO', 'teams read', { caller: caller.email, status: 200, durationMs: Date.now() - startedAt });
+        return;
+      }
+
       const byId = pathname.match(/^\/polls\/([^/]+)$/);
-      const widgetRoute = pathname.match(/^\/(calendars|tinders|quizzes)(?:\/([^/]+))?$/);
+      // `/<ressource>` et `/<ressource>/<id>` de chaque format de `widgets.js` (`RESOURCE_TYPES`).
+      const resourceRoute = pathname.match(/^\/([^/]+)(?:\/([^/]+))?$/);
+      const widgetRoute = resourceRoute && Object.hasOwn(RESOURCE_TYPES, resourceRoute[1]) ? resourceRoute : null;
 
       if (widgetRoute) {
         const type = RESOURCE_TYPES[widgetRoute[1]];
@@ -110,8 +123,8 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
           });
         }
         const idempotencyKey = parseIdempotencyKey(req.headers['idempotency-key']);
-        const { input, author } = parseCreateRequest(type, await readJsonBody(req));
-        const result = await createWidget(type, { input, author, caller, idempotencyKey }, { store, clientBaseUrl, images, imageStore });
+        const { input, author, context } = await parseCreateRequest(type, await readJsonBody(req), { store });
+        const result = await createWidget(type, { input, author, context, caller, idempotencyKey }, { store, clientBaseUrl, images, imageStore });
         sendJson(res, result.status, result.body, result.replayed ? { 'Idempotent-Replayed': 'true' } : {});
         log('INFO', result.replayed ? `${type} replayed` : `${type} created`, {
           caller: caller.email,

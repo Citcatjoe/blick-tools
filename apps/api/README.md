@@ -7,7 +7,8 @@ API serveur à serveur, déployée sur Cloud Run. Premier appelant : backend **H
   [`specs/002-hub-widgets-api/`](../../specs/002-hub-widgets-api/) (calendriers, tinders, quiz),
   [`specs/003-hub-parity-images/`](../../specs/003-hub-parity-images/) (mêmes règles que le dashboard,
   envoi d'image), [`specs/004-hub-form-descriptions/`](../../specs/004-hub-form-descriptions/)
-  (description des formulaires)
+  (description des formulaires), [`specs/005-hub-all-formats/`](../../specs/005-hub-all-formats/)
+  (teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants, effectifs)
 - Documents produits par la même fabrique que le dashboard : [`@rms/widget-model`](../../packages/widget-model/)
 
 ## `POST /polls` en bref
@@ -33,16 +34,28 @@ GET   /polls/{id}    → { id, embedUrl, question, answers: [{ id, text, votes }
 PATCH /polls/{id}    → { question?, answers?: [{ id, text }], editor } ; textes seuls, votes jamais écrits
 ```
 
-Calendriers, tinders et quiz (création et lecture, même auth ; détails :
-[`specs/002-hub-widgets-api/data-model.md`](../../specs/002-hub-widgets-api/data-model.md)) :
+Autres widgets (création et lecture, même auth ; détails :
+[`specs/002-hub-widgets-api/data-model.md`](../../specs/002-hub-widgets-api/data-model.md),
+[`specs/005-hub-all-formats/spec.md`](../../specs/005-hub-all-formats/spec.md)). Une ressource par
+format de `WIDGET_FORMS` (`resource`), routes dérivées de `RESOURCE_TYPES` (`src/widgets.js`) :
 
 ```http
 POST /calendars   GET /calendars/{id}
 POST /tinders     GET /tinders/{id}
-POST /quizzes     GET /quizzes/{id}    (images : URL https copiée dans le Storage de l'environnement)
-POST /images      corps = fichier brut (JPEG/PNG/WebP/GIF ≤ 10 Mo) → 201 { url } pour questions[i].img
+POST /quizzes     GET /quizzes/{id}    (images : URL https copiée dans le Storage, sous quizs/)
+POST /teasers     GET /teasers/{id}    (image copiée sous teasers/)
+POST /folders     GET /folders/{id}    (image copiée sous folders/)
+POST /natinotes   GET /natinotes/{id}  (joueurs des effectifs : players[i].id de GET /teams)
+POST /potms       GET /potms/{id}
+POST /facts       GET /facts/{id}      (images items[i].src / items[i].picture copiées sous factss/)
+POST /images      corps = fichier brut (JPEG/PNG/WebP/GIF ≤ 10 Mo) → 201 { url } pour tout champ image
 GET /widget-types description des formulaires de création (WIDGET_FORMS de @rms/widget-model)
+GET /teams        effectifs des joueurs (collection teams, archivés exclus), lecture seule
 ```
+
+Témoignages (`testimony`) et pronostics (`prono`) restent créés dans le dashboard seulement.
+Images : champs `kind: image` de la description (listes et variantes comprises), copiées sous
+`images.prefix` du format ; même traitement et même nettoyage en cas d'échec pour tous.
 
 ## Développement
 
@@ -61,7 +74,7 @@ npm run dev:api        # nécessite les variables ci-dessous ; sans identifiants
 | `API_AUDIENCE` | `https://blick-tools-api-1058200385938.europe-west6.run.app` | Audience attendue dans l'ID token = URL du service |
 | `ALLOWED_CALLERS` | `hub-backend@rms-leserreporter-romandie.iam.gserviceaccount.com` | Liste blanche d'e-mails, séparés par des virgules |
 | `CLIENT_BASE_URL` | prod : `https://storytelling.blick.ch/fr/__is_embed_somewhere/bl-tools-client-` · test : `https://www.prod.storytelling.blick.ch/fr/_sandbox/widget-studio-test/bl-tools-client-` | Base des `embedUrl` (même valeur que `VITE_CLIENT_BASE_URL` de l'environnement) |
-| `STORAGE_BUCKET` | prod : `blick-tools-app-42a99.firebasestorage.app` · test : `widget-studio-test.firebasestorage.app` | Bucket des copies d'images de quiz (même valeur que `VITE_FIREBASE_STORAGE_BUCKET`) |
+| `STORAGE_BUCKET` | prod : `blick-tools-app-42a99.firebasestorage.app` · test : `widget-studio-test.firebasestorage.app` | Bucket des copies d'images des widgets (même valeur que `VITE_FIREBASE_STORAGE_BUCKET`) |
 | `PORT` | fourni par Cloud Run | |
 
 Le service refuse de démarrer si l'une manque. Il n'y a **aucun** fallback vers la production. Le
@@ -92,9 +105,10 @@ gcloud artifacts repositories create blick-tools --repository-format=docker --lo
 Compte de service de l'API : `api-blicktools-ecriture@<projet>.iam.gserviceaccount.com`, sans clé
 (jamais `firebase-adminsdk-*`), avec deux rôles seulement :
 
-- *Utilisateur Cloud Datastore* (`roles/datastore.user`) sur le projet ;
+- *Utilisateur Cloud Datastore* (`roles/datastore.user`) sur le projet (écriture de `widgets`,
+  lecture des effectifs `teams` pour `GET /teams` et `POST /natinotes`) ;
 - *Administrateur des objets Storage* (`roles/storage.objectAdmin`) sur le **seul bucket** de
-  l'environnement (images de quiz : création, lecture des métadonnées, copie d'un envoi, jeton de
+  l'environnement (images des widgets : création, lecture des métadonnées, copie d'un envoi, jeton de
   téléchargement, suppression si la création échoue). Jamais au niveau du projet :
 
 ```bash
@@ -104,7 +118,8 @@ gcloud storage buckets add-iam-policy-binding gs://$BUCKET --project $P \
 ```
 
 Envois `POST /images` : déposés sous `hub-uploads/`, supprimés par une règle de cycle de vie du
-bucket 7 jours après l'envoi (un quiz en garde sa copie sous `quizs/`). La règle est versionnée dans
+bucket 7 jours après l'envoi (le widget en garde sa copie sous son préfixe : `quizs/`, `teasers/`,
+`folders/`, `factss/`). La règle est versionnée dans
 [`storage-lifecycle.json`](./storage-lifecycle.json) et ne touche que ce préfixe. `--lifecycle-file`
 **remplace** toute la configuration : vérifier d'abord qu'il n'y en a pas d'autre.
 
@@ -119,9 +134,10 @@ du backend Hub Rédaction, communiqué le 2026-11-09).
 ## Déploiement
 
 Même convention que les apps Vite : copier `.env-test` ou `.env-prod` vers `.env` selon la
-destination, **vérifier lequel est actif**, puis, depuis la racine du monorepo. Seuls 33 fichiers
-partent vers Cloud Build (`.gcloudignore` racine : manifestes npm, `packages/widget-model`,
-`apps/api/src`) ; aucun `.env`, `.git` ni code front. Contrôle : `gcloud meta list-files-for-upload .`
+destination, **vérifier lequel est actif**, puis, depuis la racine du monorepo. Seuls les fichiers
+de l'image partent vers Cloud Build (`.gcloudignore` racine : manifestes npm, `packages/widget-model`
+avec ses données `data/*.json`, `apps/api/src`) ; aucun `.env`, `.git` ni code front. Contrôle :
+`gcloud meta list-files-for-upload .`
 
 ```bash
 P=$(grep '^VITE_FIREBASE_PROJECT_ID=' .env | cut -d= -f2-)

@@ -19,3 +19,5 @@
 /packages/*/*
 !/packages/*/package.json
 !/packages/widget-model/*.js
+!/packages/widget-model/data/
+!/packages/widget-model/data/*.json

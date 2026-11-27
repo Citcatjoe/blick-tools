@@ -1,4 +1,4 @@
-# Intégration côté Hub Rédaction — widgets Blick Tools (sondages, calendriers, tinders, quiz)
+# Intégration côté Hub Rédaction — widgets Blick Tools (sondages, calendriers, tinders, quiz, teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants)
 
 Brief autonome pour le dépôt du Hub (extension CMS). Contrat formel :
 [`contracts/openapi.yaml`](./contracts/openapi.yaml) — à copier dans le dépôt du Hub si besoin.
@@ -178,11 +178,55 @@ règles sont celles du dashboard (module partagé) : un widget valide dans l'un 
   `image/jpeg`, `image/png`, `image/webp` ou `image/gif`, ≤ 10 Mo ; même authentification.
   `201 { "url" }`. Erreurs `400 VALIDATION_FAILED`, champ `image` : `invalid_type` (pas une image
   ou format refusé — le format réel est vérifié), `too_large`, `invalid_value` (illisible). Un
-  envoi qu'aucun quiz n'utilise est supprimé après **7 jours** ; un quiz garde sa propre copie.
+  envoi qu'aucun widget n'utilise est supprimé après **7 jours** ; le widget garde sa propre
+  copie. Même usage pour tous les champs image (`kind: image` de `GET /widget-types`).
 - **Lecture** : contenu + compteurs (`views`, `seeAllClicks` ; votes `yes`/`no` par carte ;
   `correct`/`incorrect` par question, `plays`, `scoreDistribution`). Un id d'un autre format →
   `404`.
 - `embedUrl` : `…/bl-tools-client-<type>/?<type>Doc=<id>` (sans `&brand=`).
+
+## Teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants (spec `005-hub-all-formats`)
+
+Mêmes règles d'appel que les calendriers, tinders et quiz (création et lecture, `blick` seulement,
+rubrique obligatoire, `author` facultatif, `Idempotency-Key` propre au format). Champs, libellés,
+bornes et variantes : `GET /widget-types`. Détail et décisions :
+[`specs/005-hub-all-formats/spec.md`](../005-hub-all-formats/spec.md).
+
+| Format | Création | Lecture | Corps minimal |
+|---|---|---|---|
+| Teaser | `POST /teasers` | `GET /teasers/{id}` | `{ "label", "title", "img", "button": { "text", "href" }, "theme" }` |
+| Dossier | `POST /folders` | `GET /folders/{id}` | `{ "label", "name", "img", "buttons": [1 à 4 × { "text", "href" }], "theme" }` |
+| NatiNotes | `POST /natinotes` | `GET /natinotes/{id}` | `{ "title", "players": [{ "id", "blickRating", "comment" }], "theme" }` |
+| Joueur·euse du match | `POST /potms` | `GET /potms/{id}` | `{ "context", "category", "text", "date", "players": [≥ 2 × { "name", "position", "team" }], "theme" }` |
+| Faits marquants | `POST /facts` | `GET /facts/{id}` | `{ "title", "date", "items": [{ "type", … }], "theme" }` |
+
+- **Images** (`img` du teaser et du dossier, `items[i].src` / `items[i].picture` des faits) :
+  comme celles du quiz (`POST /images` ou URL publique), `400` sur le chemin de l'image.
+- **Retours à la ligne** : `title` du teaser et `name` du dossier les gardent (`\n` réels).
+- **Dates seules** (`date` du joueur·euse du match et des faits) : `2026-12-20`, enregistrées à midi
+  heure suisse ; la lecture rend le même format.
+- **NatiNotes** : joueurs choisis dans `GET /teams` (`players[i].id`), sans doublon ; un
+  joueur inconnu ou archivé → `400` sur `players[i].id`. Note Blick entière de 1 à 6.
+- **Joueur·euse du match** : `team` parmi les équipes du `context` (`optionsBy` de la description) ;
+  `position` neutre (`Attaquant`…), accordée à l'enregistrement si la catégorie est `Dames`.
+- **Faits marquants** : chaque item a un `type` (`normal`, `quote`, `picture`, `number`,
+  `rating`) et seulement les champs de ce type (sinon `unknown_field`) ; au plus un `rating`.
+- **Texte enrichi** (`kind: richtext` : commentaire des notes, textes des faits) : HTML restreint
+  à `<p>`, `<br>`, `<strong>`, `<em>`, `<a href="http(s)…">` ; le reste est échappé ou retiré
+  par l'API, comme dans le dashboard. Texte vide après nettoyage → `400`.
+- **Lecture** : contenu + compteurs (teaser `views`, `clicks` ; dossier `views`, `clicks` par
+  bouton ; notes `views`, `ratings` par joueur ; joueur·euse du match `views`, `votes` par joueur ;
+  faits `views`, `reveal`, `ratingStats`).
+
+### `GET /teams`
+
+Effectifs saisis dans le dashboard (« Éditer les effectifs ») : `{ "teams": [{ "id", "name",
+"players": [{ "id", "name", "team", "img", "focal" }] }] }`, joueurs archivés exclus, équipes et
+joueurs triés par nom. Le Hub s'en sert pour le champ `players[i].id` des NatiNotes
+(`choice` + `source: "teams"` dans la description). Pour ajouter un joueur : dashboard
+`?teams` (ou `?teams=<id de l'équipe>`), qui ouvre l'éditeur des effectifs après connexion.
+
+Témoignages (`testimony`) et pronostics (`prono`) restent créés dans le dashboard seulement.
 
 ## Description des formulaires (spec `004-hub-form-descriptions`)
 
@@ -202,7 +246,8 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 |---|---|---|---|
 | **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
 | **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | aucune sur le contenu ; le bloc se déplace ou se retire de l'article | tout (`?edit=<id>`) |
-| **Tous les autres** (`teaser`, `folder`, `testimony`, `potm`, `prono`, `facts`, `natinotes`) | non | non | détectés dans l'article, édition dans le dashboard (`?edit=<id>`) |
+| **Teaser, dossier, NatiNotes, joueur·euse du match, faits marquants** | par l'API (`POST`), comme les calendriers ; intégration Hub à faire | aucune sur le contenu | tout (`?edit=<id>`) |
+| **Témoignage, pronostic** (`testimony`, `prono`) | non | non | détectés dans l'article, création et édition dans le dashboard (`?edit=<id>`) |
 
 > **Publication automatique** : pour le flux de création de sondage en 1 clic, l'Embeddable Ring
 > est **publié automatiquement** (exception confirmée par le propriétaire du Hub Rédaction le
@@ -217,8 +262,8 @@ Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools
 
 ## Hors périmètre de l'API
 
-Pas de suppression de widget ; pas de correction des calendriers, tinders et quiz ; ni lecture ni
-édition des autres formats : tout cela se fait dans le dashboard Blick Tools. Le CMS garde la main
+Pas de suppression de widget ; pas de correction des widgets autres que les sondages ; ni création,
+ni lecture, ni édition des témoignages et pronostics ; pas d'écriture des effectifs : tout cela se fait dans le dashboard Blick Tools. Le CMS garde la main
 sur l'`id` et l'`embedUrl` qu'il a reçus à la création.
 
 ## Recette sur le stage

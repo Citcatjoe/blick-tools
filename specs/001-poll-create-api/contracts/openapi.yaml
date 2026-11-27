@@ -1,12 +1,15 @@
 openapi: 3.1.0
 info:
   title: Blick Tools API
-  version: 1.3.0
+  version: 1.4.0
   description: |
     API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
     Formats : sondages (`/polls`, création, lecture, correction des textes) ; calendriers,
     tinders et quiz (`/calendars`, `/tinders`, `/quizzes`, création et lecture — spec 002) ;
-    envoi d'une image de quiz (`/images` — spec 003).
+    teasers, dossiers, NatiNotes, joueur·euse du match et faits marquants (`/teasers`,
+    `/folders`, `/natinotes`, `/potms`, `/facts`, création et lecture — spec 005) ; envoi d'une
+    image de widget (`/images` — spec 003) ; effectifs des joueurs (`/teams` — spec 005).
+    Témoignages et pronostics restent créés dans le dashboard seulement.
 
     **Règles** : celles du dashboard, partagées (`@rms/widget-model`) — un widget valide dans le
     dashboard est valide par l'API, et inversement.
@@ -345,15 +348,210 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /teasers:
+    post:
+      operationId: createTeaser
+      summary: Créer un teaser
+      description: |
+        Image obligatoire (`img`), traitée comme l'image d'une question de quiz (`POST /quizzes`) :
+        URL de `POST /images` copiée, toute autre URL https téléchargée et convertie ; copie
+        stockée sous `teasers/`. Image invalide ou introuvable → `400` sur `img`, rien n'est créé.
+        Le titre garde ses retours à la ligne.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTeaserRequest' }
+            example:
+              label: Dossier
+              title: "Tout sur les votations\ndu 30 novembre"
+              img: 'https://example.com/votations.jpg'
+              button: { text: Lire le dossier, href: 'https://www.blick.ch/fr/politique', newTab: false }
+              theme: Suisse
+      responses: *createResponses
+  /teasers/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getTeaser
+      summary: Lire un teaser
+      responses:
+        '200':
+          description: Teaser
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Teaser' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /folders:
+    post:
+      operationId: createFolder
+      summary: Créer un dossier
+      description: |
+        Image obligatoire (`img`), traitée comme pour un teaser ; copie stockée sous `folders/`.
+        De 1 à 4 boutons, texte et adresse http(s) obligatoires.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFolderRequest' }
+            example:
+              label: Dossier
+              labelColor: sport
+              name: "Coupe du monde\n2026"
+              img: 'https://example.com/coupe.jpg'
+              buttons:
+                - { text: Le programme, href: 'https://www.blick.ch/fr/sport/programme' }
+                - { text: Les groupes, href: 'https://www.blick.ch/fr/sport/groupes', newTab: true }
+              theme: Sport
+      responses: *createResponses
+  /folders/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getFolder
+      summary: Lire un dossier
+      responses:
+        '200':
+          description: Dossier
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /natinotes:
+    post:
+      operationId: createNatinotes
+      summary: Créer des NatiNotes (notes des joueurs)
+      description: |
+        Joueurs choisis dans les effectifs (`GET /teams`) par leur `id`, sans doublon. Nom,
+        équipe, portrait et cadrage sont copiés depuis l'effectif au moment de la création.
+        Joueur inconnu ou archivé → `400` sur `players[i].id`. `comment` : HTML restreint
+        (`<p>`, `<br>`, `<strong>`, `<em>`, `<a href="http(s)…">`), le reste est échappé ou
+        retiré ; vide après nettoyage → `400`. Pas d'image envoyée.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateNatinotesRequest' }
+            example:
+              title: Suisse – Kosovo (2-0)
+              showRecap: true
+              players:
+                - { id: granit-xhaka, blickRating: 5, comment: '<p>Le patron du milieu, <strong>impérial</strong>.</p>' }
+              theme: Sport
+      responses: *createResponses
+  /natinotes/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getNatinotes
+      summary: Lire des NatiNotes
+      responses:
+        '200':
+          description: NatiNotes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Natinotes' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /potms:
+    post:
+      operationId: createPotm
+      summary: Créer un joueur·euse du match
+      description: |
+        `date` : date seule (`2026-12-20`), enregistrée à midi heure suisse. Au moins 2 joueurs ;
+        `team` parmi les équipes du contexte choisi (`optionsBy` de la description) ; `position`
+        neutre, accordée selon la catégorie à l'enregistrement (Dames → Attaquante…). Pas d'image.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePotmRequest' }
+            example:
+              context: national
+              category: Messieurs
+              text: Suisse – Kosovo
+              date: '2026-12-20'
+              players:
+                - { name: Granit Xhaka, position: Milieu, team: Suisse }
+                - { name: Gregor Kobel, position: Gardien, team: Suisse }
+              theme: Sport
+      responses: *createResponses
+  /potms/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getPotm
+      summary: Lire un joueur·euse du match
+      responses:
+        '200':
+          description: Joueur·euse du match
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Potm' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /facts:
+    post:
+      operationId: createFacts
+      summary: Créer des faits marquants
+      description: |
+        `date` : date seule, enregistrée à midi heure suisse. Au moins un item ; au plus un item
+        `rating`. Champs selon `type` (variantes de la description) ; un champ d'un autre type →
+        `400 unknown_field` sur son chemin. Textes `richtext` nettoyés comme pour les NatiNotes
+        (`quote` : sans paragraphes). Images `items[i].src` (`picture`, obligatoire) et
+        `items[i].picture` (`quote`, facultative) traitées comme pour un teaser ; copies sous
+        `factss/` (préfixe du dashboard). Image invalide → `400` sur son chemin.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFactsRequest' }
+            example:
+              title: Suisse – Kosovo
+              date: '2026-12-20'
+              items:
+                - { type: normal, icon: iconEye, title: Le fait du match, text: '<p>Xhaka a touché 120 ballons.</p>' }
+                - { type: number, icon: iconHashtag, title: En chiffres, value: 3, text: buts en 10 minutes }
+                - { type: rating, title: Quelle note donneriez-vous à cette rencontre ? }
+              theme: Sport
+      responses: *createResponses
+  /facts/{id}:
+    parameters: [{ $ref: '#/components/parameters/WidgetId' }]
+    get:
+      operationId: getFacts
+      summary: Lire des faits marquants
+      responses:
+        '200':
+          description: Faits marquants
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facts' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /images:
     post:
       operationId: uploadImage
-      summary: Envoyer l'image d'une question de quiz (fichier brut)
+      summary: Envoyer l'image d'un widget (fichier brut)
       description: |
         Corps = le fichier, sans JSON ni multipart. Même traitement qu'une image importée par URL
-        (WebP, ≤ 1928 px, ≈ 75 Ko). L'`url` rendue s'utilise telle quelle dans
-        `questions[i].img` de `POST /quizzes`. Un envoi jamais utilisé par un quiz est supprimé
-        après 7 jours ; un quiz en garde sa propre copie.
+        (WebP, ≤ 1928 px, ≈ 75 Ko). L'`url` rendue s'utilise telle quelle dans tout champ image
+        d'une création (`kind: image` de `GET /widget-types` : `questions[i].img` d'un quiz, `img`
+        d'un teaser ou d'un dossier, `items[i].src` / `items[i].picture` des faits marquants). Un
+        envoi jamais utilisé est supprimé après 7 jours ; le widget en garde sa propre copie, sous
+        le préfixe de son format (`images.prefix` de la description).
       requestBody:
         required: true
         content:
@@ -404,6 +602,35 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '405': { description: '`METHOD_NOT_ALLOWED` (`Allow: GET`).' }
+  /teams:
+    get:
+      operationId: getTeams
+      summary: Effectifs des joueurs (spec 005)
+      description: |
+        Joueurs proposés par les NatiNotes (`choice` + `source: teams` de la
+        description) : collection `teams` du dashboard (« Éditer les effectifs »), joueurs
+        archivés exclus, équipes triées par nom, joueurs par nom. Source : `listTeamsForPicker`
+        de `@rms/widget-model`. Lecture seule.
+      responses:
+        '200':
+          description: Effectifs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [teams]
+                properties:
+                  teams: { type: array, items: { $ref: '#/components/schemas/PickerTeam' } }
+              example:
+                teams:
+                  - id: suisse-m-football
+                    name: Suisse M – Football
+                    players:
+                      - { id: granit-xhaka, name: Granit Xhaka, team: Suisse, img: 'https://firebasestorage.googleapis.com/v0/b/<bucket>/o/portraits%2F1_granit-xhaka.webp?alt=media&token=<uuid>', focal: { x: 50, y: 0, zoom: 1 } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '405': { description: '`METHOD_NOT_ALLOWED` (`Allow: GET`).' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 components:
   securitySchemes:
     googleIdToken:
@@ -688,6 +915,240 @@ components:
         views: { type: integer }
         theme: { type: string }
         brand: { type: string }
+    CreateTeaserRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [label, title, img, button, theme]
+      properties:
+        label: { type: string, description: Label du teaser. }
+        title: { type: string, description: 'Titre ; retours à la ligne réels (`\n`).' }
+        img: { type: string, format: uri, description: URL https ; copiée par l'API sous `teasers/`. }
+        button:
+          type: object
+          additionalProperties: false
+          required: [text, href]
+          properties:
+            text: { type: string }
+            href: { type: string, pattern: '^https?://' }
+            newTab: { type: boolean, default: false }
+    Teaser:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        label: { type: string }
+        title: { type: string, description: Retours à la ligne réels. }
+        img: { type: string }
+        button: { type: object, properties: { text: { type: string }, href: { type: string }, newTab: { type: boolean } } }
+        views: { type: integer }
+        clicks: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreateFolderRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [label, name, img, buttons, theme]
+      properties:
+        label: { type: string, description: Label du dossier. }
+        labelColor: { type: string, enum: [brand, sport], default: brand, description: 'Couleur du label (« Blick » / « Sport »).' }
+        name: { type: string, description: 'Titre ; retours à la ligne réels (`\n`).' }
+        img: { type: string, format: uri, description: URL https ; copiée par l'API sous `folders/`. }
+        buttons:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: object
+            additionalProperties: false
+            required: [text, href]
+            properties:
+              text: { type: string }
+              href: { type: string, pattern: '^https?://' }
+              newTab: { type: boolean, default: false }
+    Folder:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        label: { type: string }
+        labelColor: { type: string, enum: [brand, sport] }
+        name: { type: string, description: Retours à la ligne réels. }
+        img: { type: string }
+        buttons:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: [string, 'null'] }
+              text: { type: string }
+              href: { type: string }
+              newTab: { type: boolean }
+              clicks: { type: integer }
+        views: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreateNatinotesRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [title, players, theme]
+      properties:
+        title: { type: string, description: Événement. }
+        showRecap: { type: boolean, default: true, description: Afficher le récapitulatif. }
+        players:
+          type: array
+          minItems: 1
+          description: Joueurs des effectifs (`GET /teams`), non archivés, sans doublon.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, blickRating, comment]
+            properties:
+              id: { type: string, description: Id du joueur dans `GET /teams`. }
+              blickRating: { type: integer, minimum: 1, maximum: 6, description: Note Blick. }
+              comment: { type: string, description: 'HTML restreint (`<p>`, `<br>`, `<strong>`, `<em>`, `<a>`), nettoyé.' }
+    Natinotes:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        title: { type: string }
+        showRecap: { type: boolean }
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: [string, 'null'] }
+              name: { type: string }
+              team: { type: string }
+              img: { type: [string, 'null'] }
+              blickRating: { type: [integer, 'null'] }
+              comment: { type: string }
+              ratings: { type: object, additionalProperties: { type: integer }, description: 'Notes des lecteurs : nombre de votes par note (« 1 » à « 6 »).' }
+        views: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreatePotmRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [context, category, text, date, players, theme]
+      properties:
+        context: { type: string, enum: [national, national_league] }
+        category: { type: string, enum: [Messieurs, Dames] }
+        text: { type: string, description: 'Match (« Suisse - Canada »), affiché sous la question du vote.' }
+        date: { type: string, format: date, description: 'Date seule, enregistrée à midi heure suisse.', example: '2026-12-20' }
+        players:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, position, team]
+            properties:
+              name: { type: string }
+              position: { type: string, enum: [Attaquant, Défenseur, Milieu, Gardien, Entraîneur, Entraîneuse], description: 'Valeur neutre (libellés « Attaquant·e »…), accordée selon la catégorie.' }
+              team: { type: string, description: 'Équipe du contexte (`optionsBy` de la description).' }
+    Potm:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        context: { type: string }
+        category: { type: string }
+        text: { type: string }
+        date: { type: [string, 'null'], format: date, description: Jour en heure suisse. }
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: [string, 'null'] }
+              name: { type: string }
+              position: { type: string, description: 'Poste enregistré (accordé : « Attaquante »…).' }
+              team: { type: string }
+              votes: { type: integer }
+        views: { type: integer }
+        theme: { type: string }
+        brand: { type: string }
+    CreateFactsRequest:
+      allOf: [{ $ref: '#/components/schemas/WidgetCommonFields' }]
+      type: object
+      unevaluatedProperties: false
+      required: [title, date, items, theme]
+      properties:
+        title: { type: string, description: Rencontre. }
+        date: { type: string, format: date, description: 'Date seule, enregistrée à midi heure suisse.', example: '2026-12-20' }
+        items:
+          type: array
+          minItems: 1
+          description: Au plus un item `rating`. Seuls les champs du `type` de l'item sont admis.
+          items: { $ref: '#/components/schemas/FactsItemRequest' }
+    FactsItemRequest:
+      type: object
+      additionalProperties: false
+      required: [type, title]
+      description: |
+        `normal` : icon, title, text (richtext) ; `quote` : icon, title, text (richtext sans
+        paragraphes), author, picture (image facultative) ; `picture` : icon, title, src (image),
+        text (richtext), caption (crédit) ; `number` : icon, title, value (entier), text (texte
+        simple) ; `rating` : title seulement.
+      properties:
+        type: { type: string, enum: [normal, quote, picture, number, rating] }
+        icon: { type: string, enum: [iconCross, iconEye, iconFingerUp, iconHashtag, iconKo, iconQuote] }
+        title: { type: string }
+        text: { type: string }
+        author: { type: string }
+        picture: { type: string, format: uri, description: URL https ; copiée par l'API sous `factss/`. }
+        src: { type: string, format: uri, description: URL https ; copiée par l'API sous `factss/`. }
+        caption: { type: string }
+        value: { type: integer }
+    Facts:
+      type: object
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        title: { type: string }
+        date: { type: [string, 'null'], format: date, description: Jour en heure suisse. }
+        items:
+          type: array
+          items:
+            type: object
+            description: Champs de l'item selon son type, tels qu'enregistrés, plus `id`.
+            properties:
+              id: { type: [string, 'null'] }
+              type: { type: string }
+              icon: { type: string }
+              title: { type: string }
+              text: { type: string }
+              author: { type: string }
+              picture: { type: string }
+              src: { type: string }
+              caption: { type: string }
+              value: { type: integer }
+        views: { type: integer }
+        reveal: { type: integer }
+        ratingStats: { type: object, additionalProperties: { type: integer }, description: 'Item `rating` : nombre de votes par note.' }
+        theme: { type: string }
+        brand: { type: string }
+    PickerTeam:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              team: { type: string }
+              img: { type: [string, 'null'] }
+              focal: { type: object, properties: { x: { type: number }, y: { type: number }, zoom: { type: number } } }
     WidgetForm:
       type: object
       required: [type, resource, name, noun, titleField, brands, fields]
@@ -699,6 +1160,10 @@ components:
         titleField: { type: string, example: title, description: 'Champ qui identifie le widget (titre de l''Embeddable).' }
         brands: { type: array, items: { type: string }, example: [blick] }
         fields: { type: array, items: { $ref: '#/components/schemas/FormField' } }
+        images:
+          type: object
+          description: 'Formats avec images : préfixe Storage des copies (`quizs`, `teasers`, `folders`, `factss`).'
+          properties: { prefix: { type: string } }
     FormField:
       type: object
       required: [kind]
@@ -706,10 +1171,15 @@ components:
         key: { type: string, description: 'Nom du champ dans la requête (absent pour l''élément texte d''une liste, `item`).' }
         kind:
           type: string
-          enum: [text, textarea, url, datetime, checkbox, image, choice, list, group]
+          enum: [text, textarea, url, datetime, date, number, richtext, checkbox, image, choice, list, group]
           description: |
-            `datetime` : date et heure suisses sans décalage (`2026-12-20T20:45`) ; `image` : URL https,
-            de préférence rendue par `POST /images` ; `list` : `fields` (objets) ou `item` (textes) ;
+            `datetime` : date et heure suisses sans décalage (`2026-12-20T20:45`) ; `date` : date seule
+            (`2026-12-20`, midi heure suisse) ; `number` : entier (`min` / `max` facultatifs) ;
+            `richtext` : HTML restreint (`<p>`, `<br>`, `<strong>`, `<em>`, `<a href>`), `inline` :
+            sans paragraphes ; outils gras, italique, lien ; `image` : URL https, de préférence rendue
+            par `POST /images` ; `choice` : `options`, ou `source: teams` (joueurs de `GET /teams`,
+            groupés par équipe), ou `dependsOn` + `optionsBy` (options selon la valeur d'un champ
+            racine) ; `list` : `fields` (objets) ou `item` (textes), `variants` (éléments typés) ;
             `group` : objet `fields`.
         label: { type: string }
         placeholder: { type: string }
@@ -725,6 +1195,32 @@ components:
         addLabel: { type: string, example: Ajouter une date }
         correct: { type: string, example: isCorrect, description: 'Clé booléenne vraie sur un seul élément ; erreur sur `<parent>.correctAnswer`.' }
         optional: { type: boolean, description: 'Groupe facultatif : absent si tous ses textes sont vides.' }
+        inline: { type: boolean, description: '`richtext` sans paragraphes (`<br>` seulement).' }
+        source: { type: string, enum: [teams], description: '`choice` dont les options sont les joueurs de `GET /teams`.' }
+        dependsOn: { type: string, description: '`choice` : clé racine dont dépendent les options (`optionsBy`).' }
+        optionsBy:
+          type: object
+          description: '`choice` : options par valeur du champ `dependsOn`.'
+          additionalProperties: { type: array, items: { type: object, properties: { value: {}, label: { type: string } } } }
+        variants:
+          type: object
+          description: |
+            `list` d'éléments typés : chaque élément porte la clé `key` (ex. `type`), les champs
+            communs `fields` de la liste puis ceux de sa variante. `max` : nombre maximum d'éléments
+            de la variante ; `defaults` : valeurs posées quand on choisit la variante.
+          properties:
+            key: { type: string, example: type }
+            label: { type: string }
+            options:
+              type: array
+              items:
+                type: object
+                properties:
+                  value: { type: string }
+                  label: { type: string }
+                  max: { type: integer }
+                  fields: { type: array, items: { $ref: '#/components/schemas/FormField' } }
+                  defaults: { type: object }
         item: { $ref: '#/components/schemas/FormField' }
         fields: { type: array, items: { $ref: '#/components/schemas/FormField' } }
     Problem:
@@ -758,8 +1254,8 @@ components:
       properties:
         field:
           type: string
-          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `legend`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `theme`, `brand`, `author`, `editor`, `image` (`POST /images`), `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
+          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `legend`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `img`, `button.href`, `buttons[i].href`, `players[i].id`, `players[i].team`, `items[i].text`, `items[i].src`, `date`, `theme`, `brand`, `author`, `editor`, `image` (`POST /images`), `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
         code:
           type: string
-          enum: [required, invalid_type, invalid_value, too_few, too_many, too_large, unknown_field]
+          enum: [required, invalid_type, invalid_value, too_few, too_many, too_large, duplicate, unknown_field]
         message: { type: string }
