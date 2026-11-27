@@ -15,3 +15,5 @@ export * from './facts.js';
 export * from './forms.js';
 export * from './prono.js';
 export * from './testimony.js';
+export * from './dates.js';
+export * from './edit.js';

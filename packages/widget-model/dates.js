@@ -2,7 +2,8 @@
 // avec décalage (`Z`, `+01:00`) → instant exact ; sans décalage → heure murale suisse
 // (Europe/Zurich, heure d'été gérée), comme la saisie `datetime-local` du dashboard.
 // Date seule (joueur du match, faits du match — specs/005-hub-all-formats) : midi heure suisse,
-// comme le dashboard (`new Date(date + 'T12:00:00')` sur un poste en Suisse).
+// comme le dashboard (`new Date(date + 'T12:00:00')` sur un poste en Suisse). Lecture inverse
+// (`formatDate`, `formatDateTime`) pour pré-remplir une modification (specs/006-hub-edit).
 
 export const DEFAULT_TIME_ZONE = 'Europe/Zurich';
 
@@ -79,4 +80,17 @@ const dayFormatter = new Intl.DateTimeFormat('en-US', {
 export function formatDate(date) {
   const parts = Object.fromEntries(dayFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/** Date et heure suisses d'un instant, au format de `parseDateTime` sans décalage (« 2026-12-20T20:45 »). */
+export function formatDateTime(date) {
+  const parts = Object.fromEntries(zoneFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+/** Horodatage stocké (Timestamp Firestore, client ou Admin, ou `Date`) → `Date`, sinon null. */
+export function timestampToDate(timestamp) {
+  if (!timestamp) return null;
+  const date = typeof timestamp.toDate === 'function' ? timestamp.toDate() : timestamp;
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
 }

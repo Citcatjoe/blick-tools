@@ -1,7 +1,8 @@
 // Règles et construction du widget `testimony` (appel à témoignage), communes au dashboard et à
 // l'API. Les messages des lecteurs (sous-collection `messages`) ne passent jamais par ici.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkText, checkTheme, errorCollector, isMissing, isValidDate } from './common.js';
+import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkText, checkTheme, errorCollector, formCommon, isMissing, isValidDate, statsOnEdit, withoutUndefined } from './common.js';
+import { formatDateTime, timestampToDate } from './dates.js';
 
 /**
  * Toutes les violations, dans l'ordre du formulaire (rubrique, titre de la box, sujet, question,
@@ -46,3 +47,19 @@ export function buildTestimonySaveData({ title, subject, question, timeExpires, 
     counterMsgSent: 0,
   };
 }
+
+/** Document stocké → requête de modification (`PUT /testimonies/{id}`) : date limite en heure suisse, absente sans limite. */
+export function testimonyFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  const timeExpires = timestampToDate(data.timeExpires);
+  return withoutUndefined({
+    title: data.title ?? '',
+    subject: data.subject ?? '',
+    question: data.question ?? '',
+    timeExpires: timeExpires ? formatDateTime(timeExpires) : undefined,
+    ...formCommon(doc),
+  });
+}
+
+/** Compteurs après modification : ceux du document (vues, messages reçus), comme le dashboard. */
+export const testimonyStatsOnEdit = (current, next) => statsOnEdit(current, next);

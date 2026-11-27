@@ -1,6 +1,9 @@
 // Règles et construction du widget `folder` (dossier), communes au dashboard et à l'API.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkHttpUrl, checkImage, checkList, checkOptionalBoolean, checkText, checkTheme, errorCollector, isMissing, isPlainObject, newId, toLiteralNewlines } from './common.js';
+import {
+  BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkHttpUrl, checkImage, checkList, checkOptionalBoolean, checkText, checkTheme, errorCollector,
+  formCommon, fromLiteralNewlines, isMissing, isPlainObject, newId, optionalText, statsOnEdit, toLiteralNewlines, withoutUndefined,
+} from './common.js';
 
 /** Préfixe Storage des images de dossier (ImageUploader du dashboard). */
 export const FOLDER_IMAGE_PREFIX = 'folders';
@@ -70,4 +73,45 @@ export function buildFolderSaveData({ label, labelColor, name, img, buttons, bra
     brand: brand || DEFAULT_BRAND,
     theme,
   };
+}
+
+/**
+ * Document stocké → requête de modification (`PUT /folders/{id}`) : titre avec vrais retours à
+ * la ligne, couleur en valeur de la requête (classe inconnue → couleur par défaut), boutons avec
+ * leur id.
+ */
+export function folderFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  const labelColor = Object.keys(FOLDER_LABEL_COLORS).find((key) => FOLDER_LABEL_COLORS[key] === data.folderLabelColor);
+  return withoutUndefined({
+    label: data.folderLabel ?? '',
+    labelColor: labelColor ?? FOLDER_DEFAULT_LABEL_COLOR,
+    name: fromLiteralNewlines(data.folderName),
+    img: optionalText(data.img),
+    buttons: (data.buttons ?? []).map((button) => ({
+      id: button?.id ?? '',
+      text: button?.buttonTxt ?? '',
+      href: button?.buttonUrl ?? '',
+      newTab: button?.buttonOpensNewTab === true,
+    })),
+    ...formCommon(doc),
+  });
+}
+
+/**
+ * Clics après modification (transaction du dashboard) : par id de bouton ; à défaut, ceux d'un
+ * ancien bouton (même id, même lien et texte, même lien) ; 0 pour un nouveau.
+ */
+export function folderStatsOnEdit(current, next) {
+  const clicks = current?.stats?.buttonClicks || {};
+  const legacy = current?.data?.buttons || [];
+  return statsOnEdit(current, next, {
+    buttonClicks: Object.fromEntries((next.data.buttons ?? []).map((button) => {
+      if (clicks[button.id]) return [button.id, clicks[button.id]];
+      const old = legacy.find((b) => b.id === button.id)
+        || legacy.find((b) => b.buttonUrl === button.buttonUrl && b.buttonTxt === button.buttonTxt)
+        || legacy.find((b) => b.buttonUrl === button.buttonUrl);
+      return [button.id, old?.buttonCounterClicks || 0];
+    })),
+  });
 }

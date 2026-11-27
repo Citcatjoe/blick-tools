@@ -8,7 +8,8 @@ API serveur à serveur, déployée sur Cloud Run. Premier appelant : backend **H
   [`specs/003-hub-parity-images/`](../../specs/003-hub-parity-images/) (mêmes règles que le dashboard,
   envoi d'image), [`specs/004-hub-form-descriptions/`](../../specs/004-hub-form-descriptions/)
   (description des formulaires), [`specs/005-hub-all-formats/`](../../specs/005-hub-all-formats/)
-  (teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants, effectifs)
+  (teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants, effectifs),
+  [`specs/006-hub-edit/`](../../specs/006-hub-edit/) (modification des 11 formats)
 - Documents produits par la même fabrique que le dashboard : [`@rms/widget-model`](../../packages/widget-model/)
 
 ## `POST /polls` en bref
@@ -57,6 +58,23 @@ GET /teams        effectifs des joueurs (collection teams, archivés exclus), le
 
 Images : champs `kind: image` de la description (listes et variantes comprises), copiées sous
 `images.prefix` du format ; même traitement et même nettoyage en cas d'échec pour tous.
+
+## Modifier un widget (`PUT`, spec 006)
+
+```http
+GET /<ressource>/{id}  → { …lecture…, form, version }
+PUT /<ressource>/{id}  { …form modifié…, version, editor? }  → 200 { id, embedUrl, version }
+```
+
+Les 11 ressources, sondage compris (`PUT /polls/{id}` ; `PATCH` reste pour les extensions déjà
+en production). `form` = requête de création pré-remplie (`widgetFormFromDoc` de
+`@rms/widget-model`), les éléments des listes portant leur `id` ; `version` = `meta.timeUpdated`
+en ISO. Transaction (`store.update`) : `404` si absent, supprimé ou d'un autre format, `409
+VERSION_CONFLICT` si la version a changé, `400` avec les chemins de la création. Compteurs
+conservés par id comme les transactions d'édition du dashboard (`widgetStatsOnEdit`) ; `meta.id`,
+`meta.author`, `meta.timeCreated` gardés, `meta.lastEditor` = `editor`. Une nouvelle image est
+importée comme à la création, une image inchangée gardée ; l'ancienne copie remplacée reste dans le
+Storage (jamais supprimée : un autre widget, dupliqué dans le dashboard, peut la partager).
 
 ## Développement
 

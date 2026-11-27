@@ -27,6 +27,9 @@ export function createFirestoreStore(firestore) {
   return {
     serverTimestamp: () => FieldValue.serverTimestamp(),
     toTimestamp: (date) => Timestamp.fromDate(date),
+    // Horodatage concret (et non le sentinel) quand l'écrivain doit connaître la valeur écrite :
+    // `meta.timeUpdated` d'une modification, renvoyé comme nouvelle version (specs/006-hub-edit).
+    now: () => Timestamp.now(),
     newId: () => widgets.doc().id,
     async create(id, doc) {
       try {
@@ -53,7 +56,8 @@ export function createFirestoreStore(firestore) {
       }
     },
     // Transaction lecture-écriture : `compute(currentDoc|null)` renvoie `{ patch, ... }` ou lève
-    // une `ApiError` (404/400) qui remonte telle quelle. Firestore relance automatiquement la
+    // une `ApiError` (404/400/409) qui remonte telle quelle. `patch` : chemins de champs (`PATCH
+    // /polls`) ou blocs de premier niveau remplacés en entier (`PUT`, specs/006-hub-edit). Firestore relance automatiquement la
     // fonction en cas de conflit d'écriture concurrente ; les votes en cours ne sont jamais lus
     // dans un état incohérent.
     async update(id, compute) {

@@ -1,7 +1,9 @@
 // Widgets du Studio hors sondages (specs/002-hub-widgets-api, specs/005-hub-all-formats) :
-// création et lecture, sur le modèle de `POST/GET /polls`. Validation et construction viennent de
-// `@rms/widget-model` (mêmes documents que le dashboard) ; ce module ne fait que traduire la
-// requête, gérer l'idempotence, les images et la projection de lecture.
+// création et lecture, sur le modèle de `POST/GET /polls` ; modification des 11 formats, sondage
+// compris (`PUT`, specs/006-hub-edit). Validation, construction, relecture du formulaire et
+// conservation des compteurs viennent de `@rms/widget-model` (mêmes documents que le dashboard) ;
+// ce module ne fait que traduire la requête, gérer l'idempotence, les versions, les images et la
+// projection de lecture.
 
 import { createHash } from 'node:crypto';
 import {
@@ -15,11 +17,13 @@ import {
   validateFacts, buildFactsSaveData,
   validateProno, buildPronoSaveData,
   validateTestimony, buildTestimonySaveData,
+  validatePoll, buildPollSaveData,
   transformWidgetData, buildEmbedUrl, DEFAULT_BRAND, requestFieldKeys, widgetForm,
+  editRequestFieldKeys, widgetFormFromDoc, widgetEditInput, widgetStatsOnEdit, widgetVersion, WIDGET_EDIT_ID_LISTS,
+  formatDate, parseDate, parseDateTime, timestampToDate,
 } from '@rms/widget-model';
 import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
-import { DEFAULT_AUTHOR, authorErrors } from './polls.js';
-import { formatDate, parseDate, parseDateTime } from './dates.js';
+import { DEFAULT_AUTHOR, authorErrors, editorErrors } from './polls.js';
 import { ImageError } from './images.js';
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -54,14 +58,9 @@ function unknownNestedFields(body, nested) {
   return errors;
 }
 
-const toDate = (timestamp) => {
-  if (!timestamp) return null;
-  const date = typeof timestamp.toDate === 'function' ? timestamp.toDate() : timestamp;
-  return date instanceof Date && !Number.isNaN(date.getTime()) ? date : null;
-};
-const toIso = (timestamp) => toDate(timestamp)?.toISOString() ?? null;
+const toIso = (timestamp) => timestampToDate(timestamp)?.toISOString() ?? null;
 const toDay = (timestamp) => {
-  const date = toDate(timestamp);
+  const date = timestampToDate(timestamp);
   return date ? formatDate(date) : null;
 };
 
@@ -90,6 +89,7 @@ const FORMAT_RULES = {
       const dates = Array.isArray(body.dates)
         ? body.dates.map((date) => (isObject(date)
           ? {
+            id: date.id, // modification seulement (`unknown_field` à la création)
             text: date.text,
             complement: date.complement,
             // Date illisible → `Invalid Date`, refusée par la validation partagée (`invalid_value`).
@@ -253,6 +253,8 @@ const FORMAT_RULES = {
   natinotes: {
     // Les joueurs viennent des effectifs (collection `teams`), lus avant la validation.
     context: async (store) => ({ teams: await store.listTeams() }),
+    // Modification : les joueurs déjà enregistrés restent admis, même archivés (comme le dashboard).
+    editContext: async (store, current) => ({ teams: await store.listTeams(), previousPlayers: current.data?.players ?? [] }),
     parse: (body) => ({ theme: body.theme, brand: body.brand, title: body.title, showRecap: body.showRecap, players: body.players }),
     validate: validateNatinotes,
     build: (input, store, context) => buildNatinotesSaveData(input, context),
@@ -400,11 +402,34 @@ const hasImageField = (fields = []) => fields.some((field) => field.kind === 'im
   || hasImageField(field.fields)
   || (field.variants?.options ?? []).some((option) => hasImageField(option.fields)));
 
-const FORMATS = Object.fromEntries(Object.entries(FORMAT_RULES).map(([type, rules]) => {
+const describe = (type, rules) => {
   const form = widgetForm(type);
   if (hasImageField(form.fields) && !form.images?.prefix) throw new Error(`Format ${type} : champ image sans préfixe (images.prefix)`);
-  return [type, { ...rules, form, resource: form.resource, noun: form.noun, keys: requestFieldKeys(type), imagePrefix: form.images?.prefix ?? null }];
-}));
+  return {
+    ...rules, form, resource: form.resource, noun: form.noun, keys: requestFieldKeys(type), editKeys: editRequestFieldKeys(type),
+    imagePrefix: form.images?.prefix ?? null,
+  };
+};
+
+const FORMATS = Object.fromEntries(Object.entries(FORMAT_RULES).map(([type, rules]) => [type, describe(type, rules)]));
+
+// Formats modifiables par `PUT` : les 11, sondage compris (sa création et son `PATCH` restent dans
+// `polls.js`). Une réponse de sondage modifiée est un texte (nouvelle) ou `{ id, text }`.
+const EDIT_FORMATS = {
+  poll: describe('poll', {
+    parse: (body) => ({
+      theme: body.theme,
+      brand: body.brand,
+      question: body.question,
+      answers: Array.isArray(body.answers)
+        ? body.answers.map((answer) => (typeof answer === 'string' ? { text: answer } : isObject(answer) ? { id: answer.id, text: answer.text } : answer))
+        : body.answers,
+    }),
+    validate: validatePoll,
+    build: (input) => buildPollSaveData(input),
+  }),
+  ...FORMATS,
+};
 
 export const RESOURCE_TYPES = Object.freeze(
   Object.fromEntries(Object.entries(FORMATS).map(([type, format]) => [format.resource, type])),
@@ -484,12 +509,16 @@ async function importImage(img, prefix, { images, imageStore }) {
   return imageStore.put(await images.convert(await images.fetch(img)), prefix);
 }
 
-/** Images du widget dans le Storage de l'environnement ; nettoie tout en cas d'échec. */
-async function copyImages(format, input, deps) {
+/**
+ * Images du widget dans le Storage de l'environnement ; nettoie tout en cas d'échec. `keep` :
+ * URL déjà enregistrées dans le widget (modification), gardées telles quelles.
+ */
+async function copyImages(format, input, deps, keep = new Set()) {
   const ready = structuredClone(input);
   const copied = [];
   try {
     for (const slot of imageSlots(format.form.fields, ready)) {
+      if (keep.has(slot.value)) continue;
       let image;
       try {
         image = await importImage(slot.value, format.imagePrefix, deps);
@@ -557,11 +586,16 @@ export async function createWidget(type, { input, author, context, caller, idemp
   }
 }
 
-/** Lecture d'un widget ; `404` si absent ou d'un autre format. */
+const notFound = (format) => new ApiError(404, 'NOT_FOUND', `${format.noun[0].toUpperCase()}${format.noun.slice(1)} introuvable`);
+
+/**
+ * Lecture d'un widget ; `404` si absent ou d'un autre format. `form` : requête de modification
+ * pré-remplie ; `version` : à renvoyer avec elle (specs/006-hub-edit).
+ */
 export async function getWidget(type, { id }, { store, clientBaseUrl }) {
   const format = FORMATS[type];
   const doc = await store.get(id);
-  if (!doc || doc.type !== type) throw new ApiError(404, 'NOT_FOUND', `${format.noun[0].toUpperCase()}${format.noun.slice(1)} introuvable`);
+  if (!doc || doc.type !== type) throw notFound(format);
   const widgetId = doc.meta?.id || id;
   return {
     id: widgetId,
@@ -569,5 +603,92 @@ export async function getWidget(type, { id }, { store, clientBaseUrl }) {
     ...format.project(doc),
     theme: doc.meta?.theme ?? '',
     brand: doc.meta?.brand || DEFAULT_BRAND,
+    form: widgetFormFromDoc(type, doc),
+    version: widgetVersion(doc),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Modification (`PUT /<ressource>/{id}`, specs/006-hub-edit).
+// ---------------------------------------------------------------------------------------------
+
+/** Document modifiable : présent, non supprimé, du format attendu ; sinon `404`. */
+function editable(format, type, doc) {
+  if (!doc || doc.type !== type || doc.meta?.deleted === true) throw notFound(format);
+  return doc;
+}
+
+const versionConflict = () => new ApiError(409, 'VERSION_CONFLICT', 'Version périmée', {
+  detail: 'Le widget a été modifié entre-temps dans le Studio ou ailleurs : recharger avant de modifier.',
+});
+
+/** `id` d'un élément de liste gardée : chaîne non vide si présent. */
+function itemIdErrors(type, body) {
+  const key = WIDGET_EDIT_ID_LISTS[type];
+  if (!key || !Array.isArray(body[key])) return [];
+  return body[key].flatMap((item, index) => (isObject(item) && !isMissing(item.id) && typeof item.id !== 'string'
+    ? [{ field: `${key}[${index}].id`, code: 'invalid_type', message: `L'identifiant de l'élément ${index + 1} doit être une chaîne de caractères.` }]
+    : []));
+}
+
+/** URL des images enregistrées dans le widget (gardées si la requête les renvoie). */
+const storedImages = (format, type, doc) => new Set(imageSlots(format.form.fields, widgetFormFromDoc(type, doc)).map((slot) => slot.value));
+
+/**
+ * Modification complète d'un widget. Lecture préalable : `404`, `409 VERSION_CONFLICT`, puis
+ * validation partagée (`400`), import des nouvelles images ; la transaction relit le document,
+ * revérifie existence et version, reconstruit le document avec les ids gardés et les compteurs du
+ * document relu, garde `meta.id`, `meta.author`, `meta.timeCreated`, et écrit `meta.timeUpdated`
+ * (= nouvelle version) et `meta.lastEditor`. Échec : les images copiées sont supprimées ; une image
+ * remplacée reste dans le Storage.
+ *
+ * @returns {Promise<{ id: string, embedUrl: string, version: string }>}
+ */
+export async function updateWidget(type, { id, body }, { store, clientBaseUrl, images, imageStore }) {
+  const format = EDIT_FORMATS[type];
+  if (!isObject(body)) {
+    throw validationFailed([{ field: 'body', code: 'invalid_type', message: 'Le corps doit être un objet JSON.' }]);
+  }
+  const found = editable(format, type, await store.get(id));
+  if (typeof body.version === 'string' && body.version !== widgetVersion(found)) throw versionConflict();
+
+  const errors = [...unknownFields(body, format.editKeys.root), ...unknownNestedFields(body, format.editKeys.nested), ...itemIdErrors(type, body)];
+  const input = widgetEditInput(type, format.parse(body, errors), found);
+  const context = format.editContext ? await format.editContext(store, found) : (format.context ? await format.context(store) : undefined);
+  errors.push(...format.validate(input, context));
+  // Chaîne vide admise : version d'un document sans horodatage lisible.
+  if (body.version === undefined || body.version === null) errors.push({ field: 'version', code: 'required', message: 'La version lue avec le widget est obligatoire.' });
+  else if (typeof body.version !== 'string') errors.push({ field: 'version', code: 'invalid_type', message: 'La version doit être une chaîne de caractères.' });
+  errors.push(...editorErrors(body.editor));
+  if (errors.length > 0) throw validationFailed(errors);
+  const editor = body.editor ?? DEFAULT_AUTHOR;
+
+  let ready = input;
+  let copied = [];
+  if (format.imagePrefix) ({ input: ready, copied } = await copyImages(format, input, { images, imageStore }, storedImages(format, type, found)));
+
+  try {
+    const { version } = await store.update(id, (current) => {
+      editable(format, type, current);
+      if (widgetVersion(current) !== body.version) throw versionConflict();
+      const timeUpdated = store.now();
+      const next = transformWidgetData({
+        ...format.build(ready, store, context),
+        id: current.meta?.id || id,
+        author: current.meta?.author ?? '',
+        deleted: false,
+        timeCreated: current.meta?.timeCreated,
+        timeUpdated,
+      }, { serverTimestamp: store.serverTimestamp });
+      next.stats = widgetStatsOnEdit(type, current, next);
+      next.meta.lastEditor = editor;
+      // Champs de premier niveau remplacés en entier, comme `transaction.update` du dashboard.
+      return { patch: { type: next.type, meta: next.meta, stats: next.stats, data: next.data }, version: widgetVersion(next) };
+    });
+    const widgetId = found.meta?.id || id;
+    return { id: widgetId, embedUrl: buildEmbedUrl({ type, id: widgetId, brand: ready.brand || DEFAULT_BRAND }, clientBaseUrl), version };
+  } catch (error) {
+    await removeAll(copied, imageStore);
+    throw error;
+  }
 }

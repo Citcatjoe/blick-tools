@@ -133,3 +133,36 @@ export function deepFreeze(value) {
   }
   return value;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Modification d'un widget existant (specs/006-hub-edit) : lecture du document vers la requête,
+// compteurs conservés.
+// ---------------------------------------------------------------------------------------------
+
+/** Champs communs du formulaire relu : rubrique et marque du document. */
+export const formCommon = (doc) => ({ theme: doc?.meta?.theme ?? '', brand: doc?.meta?.brand || DEFAULT_BRAND });
+
+/** Titre stocké avec des `\n` littéraux (teaser, dossier) → vrais retours à la ligne. */
+export const fromLiteralNewlines = (value) => (typeof value === 'string' ? value.replace(/\\n/g, '\n') : '');
+
+/** Copie de l'objet sans ses clés `undefined` (valeurs facultatives absentes du formulaire relu). */
+export const withoutUndefined = (object) => Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
+
+/** Texte facultatif relu : absent s'il est vide. */
+export const optionalText = (value) => (typeof value === 'string' && value !== '' ? value : undefined);
+
+/**
+ * Compteurs après modification, comme les transactions d'édition du dashboard : ceux du document
+ * relu dans la transaction (`current`), y compris les vues et compteurs globaux, puis `counters`
+ * (recalculés par élément). Le compteur du lien global disparaît avec le lien
+ * (`transformWidgetData`).
+ *
+ * @param {object} current document stocké ; @param {object} next document reconstruit
+ * @param {object} [counters] compteurs propres au format, remplaçant ceux du document
+ */
+export function statsOnEdit(current, next, counters = {}) {
+  const stats = { ...(isPlainObject(current?.stats) ? current.stats : {}), ...counters };
+  stats.views = Number(stats.views) || 0;
+  if (isBlank(next?.data?.linkGlobalHref)) delete stats.globalLinkClicks;
+  return stats;
+}

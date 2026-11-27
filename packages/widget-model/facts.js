@@ -2,8 +2,12 @@
 // dashboard et à l'API. Chaque élément a un type (FactsForm.jsx) qui fixe ses champs ; au plus un
 // élément « Note du match » (`rating`) par widget.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkDate, checkImage, checkList, checkText, checkTheme, errorCollector, isMissing, isPlainObject, newId, deepFreeze } from './common.js';
-import { checkRichText, escapeHtmlText, sanitizeRichText } from './richtext.js';
+import {
+  BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkDate, checkImage, checkList, checkText, checkTheme, errorCollector, formCommon, isMissing,
+  isPlainObject, newId, deepFreeze, statsOnEdit, withoutUndefined,
+} from './common.js';
+import { checkRichText, escapeHtmlText, sanitizeRichText, unescapeHtmlText } from './richtext.js';
+import { formatDate, timestampToDate } from './dates.js';
 import icons from './data/factsIcons.json' with { type: 'json' };
 
 /** Préfixe Storage des images des faits marquants (préfixe actuel du dashboard). */
@@ -168,4 +172,42 @@ function itemText({ type, text }) {
   if (type === 'rating') return '';
   if (type === 'number') return escapeHtmlText(text.trim());
   return sanitizeRichText(text, { inline: type === 'quote' });
+}
+
+/**
+ * Document stocké → requête de modification (`PUT /facts/{id}`) : date en jour suisse ; chaque
+ * élément porte son id, son type et les seuls champs de ce type (textes enrichis tels que
+ * stockés, description d'un chiffre déséchappée ; personne détourée absente si vide).
+ */
+export function factsFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  const date = timestampToDate(data.date);
+  return withoutUndefined({
+    title: data.title ?? '',
+    date: date ? formatDate(date) : undefined,
+    items: (data.items ?? []).map((item) => {
+      const type = FACTS_ITEM_TYPES.includes(item?.type) ? item.type : 'normal';
+      const form = { id: item?.id ?? '', type };
+      for (const key of FACTS_ITEM_FIELDS[type]) {
+        const value = item?.[key];
+        if (key === 'picture') form.picture = isMissing(value) ? undefined : value;
+        else if (key === 'value') form.value = Number.isInteger(value) ? value : undefined;
+        else if (key === 'text' && type === 'number') form.text = unescapeHtmlText(value ?? '');
+        else form[key] = value ?? '';
+      }
+      return withoutUndefined(form);
+    }),
+    ...formCommon(doc),
+  });
+}
+
+/**
+ * Compteurs après modification (transaction du dashboard) : vues, révélations et avis sur la note
+ * du match (`ratingStats`) gardés tels quels ; anciens compteurs par élément (`itemCounters`)
+ * retirés.
+ */
+export function factsStatsOnEdit(current, next) {
+  const stats = statsOnEdit(current, next, { ratingStats: current?.stats?.ratingStats || current?.ratingStats || {} });
+  delete stats.itemCounters;
+  return stats;
 }

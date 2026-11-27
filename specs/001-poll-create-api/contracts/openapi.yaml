@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Blick Tools API
-  version: 1.5.0
+  version: 1.6.0
   description: |
     API serveur à serveur de Blick Tools. Appelant prévu : backend Hub Rédaction (Cloud Run).
     Formats : sondages (`/polls`, création, lecture, correction des textes) ; calendriers,
@@ -9,7 +9,8 @@ info:
     teasers, dossiers, NatiNotes, joueur·euse du match, faits marquants, pronostics et appels à
     témoignage (`/teasers`, `/folders`, `/natinotes`, `/potms`, `/facts`, `/pronos`,
     `/testimonies`, création et lecture — spec 005) ; envoi d'une image de widget (`/images` —
-    spec 003) ; effectifs des joueurs (`/teams` — spec 005).
+    spec 003) ; effectifs des joueurs (`/teams` — spec 005) ; modification des 11 formats
+    (`PUT /<ressource>/{id}`, pré-remplie par `form` et `version` de la lecture — spec 006).
 
     **Règles** : celles du dashboard, partagées (`@rms/widget-model`) — un widget valide dans le
     dashboard est valide par l'API, et inversement.
@@ -148,7 +149,8 @@ paths:
           description: Sondage trouvé
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Poll' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Poll' }, { $ref: '#/components/schemas/EditState' }]
         '401':
           description: '`UNAUTHENTICATED` — jeton absent, illisible, expiré ou mauvaise audience.'
           content:
@@ -173,6 +175,8 @@ paths:
       operationId: updatePoll
       summary: Corriger la question et/ou les textes des réponses
       description: |
+        Gardé pour les extensions déjà en production ; `PUT` le remplace (spec 006). Ne change
+        pas `meta.timeUpdated` (donc pas la `version`).
         Correction limitée : seuls `question` et les textes de `answers` changent ; les votes
         (`stats.answerCounters`) ne sont jamais écrits. `answers` doit reprendre **exactement** les
         identifiants existants, dans le même ordre (pas d'ajout, de retrait ni de
@@ -219,6 +223,41 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+    put:
+      operationId: editPoll
+      summary: Modifier un sondage
+      description: &editDescription |
+        Modification complète (spec 006) : le corps est la requête de création (mêmes champs,
+        mêmes règles, mêmes chemins d'erreur, `author` refusé) avec le `form` de la lecture
+        modifié, plus `version` (obligatoire, celle de la lecture) et `editor` (facultatif).
+        Les éléments des listes gardées (réponses de sondage, dates de calendrier qui en ont,
+        cartes, questions, boutons, candidats, faits marquants) portent leur `id` : leurs
+        compteurs sont conservés ; sans `id` ou avec un `id` inconnu, l'élément est nouveau
+        (compteur à 0) ; un élément retiré perd son compteur. Vues et compteurs globaux gardés.
+        `meta.id`, `meta.author`, `meta.timeCreated` gardés ; `meta.timeUpdated` = nouvelle
+        version ; `meta.lastEditor` = `editor`. Nouvelle image importée comme à la création ;
+        image inchangée gardée ; l'ancienne copie remplacée n'est **pas** supprimée du Storage.
+        Écriture transactionnelle : version relue au moment d'écrire.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/EditPollRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: &editResponses
+        '200':
+          description: Modifié
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EditResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFoundForEdit' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /calendars:
     post:
       operationId: createCalendar
@@ -268,11 +307,23 @@ paths:
           description: Calendrier
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Calendar' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Calendar' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editCalendar
+      summary: Modifier un calendrier
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateCalendarRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /tinders:
     post:
       operationId: createTinder
@@ -300,11 +351,23 @@ paths:
           description: Tinder
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Tinder' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Tinder' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editTinder
+      summary: Modifier un tinder
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateTinderRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /quizzes:
     post:
       operationId: createQuiz
@@ -343,11 +406,23 @@ paths:
           description: Quiz
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Quiz' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Quiz' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editQuiz
+      summary: Modifier un quiz
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateQuizRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /teasers:
     post:
       operationId: createTeaser
@@ -380,11 +455,23 @@ paths:
           description: Teaser
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Teaser' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Teaser' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editTeaser
+      summary: Modifier un teaser
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateTeaserRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /folders:
     post:
       operationId: createFolder
@@ -418,11 +505,23 @@ paths:
           description: Dossier
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Folder' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Folder' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editFolder
+      summary: Modifier un dossier
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateFolderRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /natinotes:
     post:
       operationId: createNatinotes
@@ -456,11 +555,23 @@ paths:
           description: NatiNotes
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Natinotes' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Natinotes' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editNatinotes
+      summary: Modifier des NatiNotes
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateNatinotesRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /potms:
     post:
       operationId: createPotm
@@ -495,11 +606,23 @@ paths:
           description: Joueur·euse du match
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Potm' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Potm' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editPotm
+      summary: Modifier un·e joueur·euse du match
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreatePotmRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /facts:
     post:
       operationId: createFacts
@@ -536,11 +659,23 @@ paths:
           description: Faits marquants
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Facts' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Facts' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editFacts
+      summary: Modifier des faits marquants
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateFactsRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /pronos:
     post:
       operationId: createProno
@@ -574,11 +709,23 @@ paths:
           description: Pronostic
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Prono' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Prono' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editProno
+      summary: Modifier un pronostic
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreatePronoRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /testimonies:
     post:
       operationId: createTestimony
@@ -612,11 +759,23 @@ paths:
           description: Appel à témoignage
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Testimony' }
+              schema:
+                allOf: [{ $ref: '#/components/schemas/Testimony' }, { $ref: '#/components/schemas/EditState' }]
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: editTestimony
+      summary: Modifier un appel à témoignage
+      description: *editDescription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf: [{ $ref: '#/components/schemas/CreateTestimonyRequest' }, { $ref: '#/components/schemas/EditFields' }]
+      responses: *editResponses
   /images:
     post:
       operationId: uploadImage
@@ -742,6 +901,12 @@ components:
     Conflict:
       description: '`IDEMPOTENCY_CONFLICT`.'
       content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    VersionConflict:
+      description: '`VERSION_CONFLICT` — widget modifié entre-temps (Studio, Hub ou autre) : relire puis refaire la modification.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    NotFoundForEdit:
+      description: '`NOT_FOUND` — inexistant, supprimé (`meta.deleted`) ou d''un autre format.'
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
     TooLarge:
       description: '`PAYLOAD_TOO_LARGE` — corps > 64 Kio.'
       content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
@@ -834,6 +999,54 @@ components:
         editor:
           type: string
           description: E-mail du journaliste, conservé comme trace (`meta.updatedBy`).
+    EditState:
+      type: object
+      required: [form, version]
+      properties:
+        form:
+          type: object
+          description: |
+            Requête de modification pré-remplie : mêmes clés et formes que la requête de création
+            du format (dates `YYYY-MM-DD` / `YYYY-MM-DDTHH:mm` heure suisse, vrais retours à la
+            ligne, HTML restreint des `richtext`, images = URL https du Storage), sans `author` ;
+            valeurs facultatives vides absentes. Les éléments des listes gardées portent leur `id`.
+        version:
+          type: string
+          description: '`meta.timeUpdated` en ISO 8601 (chaîne vide si illisible), à renvoyer telle quelle avec `PUT`. Les votes des lecteurs ne la changent pas.'
+          example: '2026-11-27T10:15:30.123Z'
+    EditFields:
+      type: object
+      required: [version]
+      properties:
+        version: { type: string, description: '`version` lue avec `form`.' }
+        editor: { type: string, format: email, maxLength: 254, description: 'E-mail du journaliste (`meta.lastEditor`). Défaut « Hub Rédaction ».' }
+      description: |
+        Champs propres à `PUT`. `author` est refusé (`unknown_field`) : l'auteur est conservé. Dans
+        les listes gardées, chaque élément accepte en plus `id` (chaîne) : `dates[i].id`,
+        `cards[i].id`, `questions[i].id`, `buttons[i].id`, `players[i].id` (joueur·euse du match),
+        `items[i].id` ; NatiNotes : `players[i].id` est déjà l'id du joueur.
+    EditPollRequest:
+      type: object
+      required: [question, answers, theme]
+      properties:
+        question: { type: string }
+        answers:
+          type: array
+          minItems: 2
+          description: Réponse gardée `{ id, text }`, nouvelle réponse = texte (ou `{ text }`).
+          items:
+            oneOf:
+              - { type: string }
+              - { type: object, additionalProperties: false, required: [text], properties: { id: { type: string }, text: { type: string } } }
+        theme: { type: string, enum: [Suisse, Inter, Sport] }
+        brand: { type: string, enum: [blick, pme], default: blick }
+    EditResponse:
+      type: object
+      required: [id, embedUrl, version]
+      properties:
+        id: { type: string }
+        embedUrl: { type: string, format: uri }
+        version: { type: string, description: Nouvelle version, pour une modification suivante. }
     WidgetCommonFields:
       type: object
       properties:
@@ -1372,6 +1585,7 @@ components:
             - NOT_FOUND
             - METHOD_NOT_ALLOWED
             - IDEMPOTENCY_CONFLICT
+            - VERSION_CONFLICT
             - PAYLOAD_TOO_LARGE
             - UNSUPPORTED_MEDIA_TYPE
             - UNAVAILABLE
@@ -1387,7 +1601,7 @@ components:
       properties:
         field:
           type: string
-          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `legend`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `img`, `button.href`, `buttons[i].href`, `players[i].id`, `players[i].team`, `items[i].text`, `items[i].src`, `date`, `theme`, `brand`, `author`, `editor`, `image` (`POST /images`), `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
+          description: 'Chemin du champ, ex. `question`, `answers[i]`, `dates[i].start`, `cards[i].label`, `legend`, `questions[i].answers[j].text`, `questions[i].correctAnswer`, `questions[i].img`, `conclusion.text1`, `linkGlobal.href`, `img`, `button.href`, `buttons[i].href`, `players[i].id`, `players[i].team`, `items[i].text`, `items[i].src`, `date`, `theme`, `brand`, `author`, `editor`, `version`, `cards[i].id` (`PUT`), `image` (`POST /images`), `body` (corps non objet), ou le chemin d''un champ inconnu (indices base 0).'
         code:
           type: string
           enum: [required, invalid_type, invalid_value, too_few, too_many, too_large, duplicate, unknown_field]

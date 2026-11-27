@@ -1,6 +1,6 @@
 // Règles et construction du widget `tinder`, communes au dashboard et à l'API.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkText, checkTheme, errorCollector, isBlank, isMissing, newId, trimOrEmpty } from './common.js';
+import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkText, checkTheme, errorCollector, formCommon, isBlank, isMissing, newId, statsOnEdit, trimOrEmpty, withoutUndefined } from './common.js';
 
 // Le formulaire du dashboard affiche toujours 3 cartes, sans ajout ni retrait.
 export const TINDER_CARDS = 3;
@@ -71,4 +71,28 @@ export function buildTinderSaveData({ label, title, cards, legend, tinderVotes, 
     brand: brand || DEFAULT_BRAND,
     theme,
   };
+}
+
+/**
+ * Document stocké → requête de modification (`PUT /tinders/{id}`) : les cartes portent leur id ;
+ * `legend` seulement si elle est affichée.
+ */
+export function tinderFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  const legend = data.tinderLegend;
+  return withoutUndefined({
+    label: data.tinderLabel ?? '',
+    title: data.tinderTitle ?? '',
+    cards: (data.tinderCards ?? []).map((card) => ({ id: card?.id ?? '', label: card?.tinderCardLabel ?? '', title: card?.tinderCardTitle ?? '' })),
+    legend: legend?.display === true && !isBlank(legend.txt) ? legend.txt : undefined,
+    ...formCommon(doc),
+  });
+}
+
+/** Votes après modification : `{ yes, no }` par id de carte (anciens tinders : dans `data`), 0 pour une nouvelle. */
+export function tinderStatsOnEdit(current, next) {
+  const votes = current?.stats?.tinderVotes ?? current?.data?.tinderVotes ?? {};
+  return statsOnEdit(current, next, {
+    tinderVotes: Object.fromEntries((next.data.tinderCards ?? []).map(({ id }) => [id, votes[id] || { yes: 0, no: 0 }])),
+  });
 }

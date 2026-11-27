@@ -144,6 +144,48 @@ Corps :
 - Les votes ne sont jamais écrits par le PATCH (aucune perte de votes possible).
 - `200` : même forme que `GET` (état après modification). `404` si introuvable.
 - Écriture transactionnelle (1 lecture + 1 écriture).
+- Gardé pour les extensions déjà en production ; les nouvelles versions utilisent `PUT` (section
+  suivante). Le `PATCH` ne change pas la `version`.
+
+## Modifier un widget déjà placé (spec `006-hub-edit`, les 11 formats)
+
+Même authentification, même liste blanche, mêmes erreurs. Le Hub pré-remplit son formulaire avec
+la lecture, puis renvoie le formulaire modifié :
+
+1. `GET /<ressource>/{id}` rend, en plus de la lecture habituelle :
+   - `form` : la **requête de création** du widget (mêmes clés que `GET /widget-types`, mêmes
+     formes : dates `YYYY-MM-DD` ou `YYYY-MM-DDTHH:mm` heure suisse, vrais retours à la ligne,
+     HTML restreint pour `richtext`, images = URL https du Storage), sans `author` ; valeurs
+     facultatives vides absentes ;
+   - `version` : chaîne opaque, à renvoyer telle quelle.
+2. `PUT /<ressource>/{id}` avec `{ …form modifié…, version, editor }` (`editor` = e-mail du
+   journaliste, facultatif → « Hub Rédaction ») → `200 { id, embedUrl, version }` (nouvelle
+   version pour une modification suivante ; `id` et `embedUrl` inchangés).
+
+```json
+{
+  "question": "Faut-il introduire la semaine de 4 jours ?",
+  "answers": [ { "id": "85ccf997-…", "text": "Non" }, "Peut-être", { "id": "27de539a-…", "text": "Oui" } ],
+  "theme": "Suisse", "brand": "blick",
+  "version": "2026-11-27T10:15:30.123Z", "editor": "jane.doe@ringier.ch"
+}
+```
+
+- **Éléments de liste** : garder l'`id` reçu dans `form` (réponses de sondage, dates de
+  calendrier qui en ont, cartes, questions, boutons, candidats, faits marquants ; NatiNotes :
+  `players[i].id` est l'id du joueur). Un élément sans `id` (ou avec un `id` inconnu) est nouveau.
+  Sondage : une nouvelle réponse peut rester un simple texte.
+- **Compteurs** comme dans le dashboard : votes, clics, notes et statistiques suivent l'`id` de
+  leur élément (réordonner ne perd rien) ; un élément retiré perd les siens ; un nouveau part de 0.
+  Vues et compteurs globaux (clics « tout voir », révélations, messages reçus…) gardés.
+- **Rubrique et marque** : reprises de la requête. Auteur et date de création : gardés.
+- **Images** : une nouvelle image (`POST /images` ou URL) est importée comme à la création ; une
+  image renvoyée telle quelle est gardée ; l'ancienne copie remplacée n'est pas supprimée.
+- **Erreurs** : `409 VERSION_CONFLICT` si le widget a été modifié entre-temps (Studio, autre
+  journaliste) → recharger (`GET`) et refaire la modification ; `404` si supprimé ou introuvable ;
+  `400 VALIDATION_FAILED` avec les mêmes `errors[].field` qu'à la création (plus `version`,
+  `editor`, `<liste>[i].id`) ; `author` → `unknown_field`.
+- NatiNotes : un joueur déjà présent reste accepté même s'il a été archivé depuis.
 
 ## Calendriers, tinders et quiz (spec `002-hub-widgets-api`)
 
@@ -252,9 +294,9 @@ courantes ; le détail se fait dans le dashboard, ouvert sur le widget via `?edi
 
 | Format | Création Hub | Correction Hub | Détail (dashboard) |
 |---|---|---|---|
-| **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | limitée : question, texte des réponses (votes conservés) | rubrique, marque, ajout/retrait/réordonnancement des réponses, suppression |
-| **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | aucune sur le contenu ; le bloc se déplace ou se retire de l'article | tout (`?edit=<id>`) |
-| **Teaser, dossier, NatiNotes, joueur·euse du match, faits marquants, pronostic, témoignage** | par l'API (`POST`), comme les calendriers ; intégration Hub à faire | aucune sur le contenu | tout (`?edit=<id>`) |
+| **Sondage** (`poll`) | de bout en bout : sondage + Embeddable Ring publié + bloc inséré | complète par `PUT` (spec 006, compteurs conservés) ; `PATCH` (textes seuls) pour les anciennes extensions | suppression, options propres au dashboard |
+| **Calendrier, tinder, quiz** | de bout en bout : widget + Embeddable Ring publié + bloc inséré | complète par `PUT` (spec 006) ; intégration Hub à faire | suppression, options propres au dashboard (`?edit=<id>`) |
+| **Teaser, dossier, NatiNotes, joueur·euse du match, faits marquants, pronostic, témoignage** | par l'API (`POST`), comme les calendriers ; intégration Hub à faire | complète par `PUT` (spec 006) ; intégration Hub à faire | suppression, options propres au dashboard (`?edit=<id>`) |
 
 > **Publication automatique** : pour le flux de création de sondage en 1 clic, l'Embeddable Ring
 > est **publié automatiquement** (exception confirmée par le propriétaire du Hub Rédaction le
@@ -269,7 +311,8 @@ Le dashboard se trouve **à côté des widgets**, même racine que les `bl-tools
 
 ## Hors périmètre de l'API
 
-Pas de suppression de widget ; pas de correction des widgets autres que les sondages ;
+Pas de suppression de widget ; pas de modification des options que seul le dashboard propose
+(options avancées des dates de calendrier, couleurs du pronostic : conservées par `PUT`) ;
 pas de lecture des messages reçus par les appels à témoignage ; pas d'écriture des effectifs : tout cela se fait dans le dashboard Blick Tools. Le CMS garde la main
 sur l'`id` et l'`embedUrl` qu'il a reçus à la création.
 

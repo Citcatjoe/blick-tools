@@ -2,7 +2,7 @@
 // Compteurs par id de question (constitution, principe II) : la création produit toujours
 // `statsQuestions[questionId]` et une distribution de scores 0..n (specs/002 research R3).
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkText, checkTheme, errorCollector, isMissing, newId, trimOrEmpty } from './common.js';
+import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkText, checkTheme, errorCollector, formCommon, isMissing, newId, optionalText, statsOnEdit, trimOrEmpty, withoutUndefined } from './common.js';
 
 /** Préfixe Storage des images des questions (dashboard et API). */
 export const QUIZ_IMAGE_PREFIX = 'quizs';
@@ -111,4 +111,48 @@ export function buildQuizSaveData({ title, questions, conclusion, brand, theme }
     brand: brand || DEFAULT_BRAND,
     theme,
   };
+}
+
+/**
+ * Document stocké → requête de modification (`PUT /quizzes/{id}`) : les questions portent leur
+ * id ; indice et image absents s'ils sont vides.
+ */
+export function quizFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  return {
+    title: data.title ?? '',
+    questions: (data.questions ?? []).map((question) => withoutUndefined({
+      id: question?.id ?? '',
+      text: question?.text ?? '',
+      answers: (question?.answers ?? []).map((answer) => ({ text: answer?.text ?? '', isCorrect: answer?.isCorrect === true })),
+      hint: optionalText(question?.hint),
+      img: optionalText(question?.img),
+      hidePercent: question?.hidePercent === true,
+    })),
+    conclusion: Object.fromEntries(QUIZ_CONCLUSION_KEYS.map((key) => [key, data.conclusion?.[key] ?? ''])),
+    ...formCommon(doc),
+  };
+}
+
+/**
+ * Statistiques après modification (transaction du dashboard) : par id de question (anciens quiz :
+ * par position), `{ correct: 0, incorrect: 0 }` pour une nouvelle ; distribution des scores gardée
+ * et ramenée à 0..n questions.
+ */
+export function quizStatsOnEdit(current, next) {
+  const stats = current?.stats ?? {};
+  const statsQuestions = stats.statsQuestions || current?.statsQuestions || {};
+  const questions = next.data.questions ?? [];
+  const scoreDistribution = { ...(stats.statsGlobal?.scoreDistribution || current?.statsGlobal?.scoreDistribution || {}) };
+  for (let score = 0; score <= questions.length; score++) if (!(score in scoreDistribution)) scoreDistribution[score] = 0;
+  for (const key of Object.keys(scoreDistribution)) {
+    const score = Number.parseInt(key, 10);
+    if (score < 0 || score > questions.length) delete scoreDistribution[key];
+  }
+  return statsOnEdit(current, next, {
+    statsQuestions: Object.fromEntries(questions.map(({ id }, index) => [
+      id, statsQuestions[id] || statsQuestions[index] || { correct: 0, incorrect: 0 },
+    ])),
+    statsGlobal: { ...(stats.statsGlobal ?? {}), scoreDistribution },
+  });
 }

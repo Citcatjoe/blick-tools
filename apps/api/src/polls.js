@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { validatePoll, validatePollEdits, buildPollSaveData, transformWidgetData, buildEmbedUrl, requestFieldKeys } from '@rms/widget-model';
+import {
+  validatePoll, validatePollEdits, buildPollSaveData, transformWidgetData, buildEmbedUrl, requestFieldKeys, pollFormFromDoc, widgetVersion,
+  DEFAULT_POLL_BRAND,
+} from '@rms/widget-model';
 import { ApiError, AlreadyExistsError, validationFailed } from './errors.js';
 
 export const DEFAULT_AUTHOR = 'Hub Rédaction';
@@ -9,17 +12,22 @@ const REQUEST_FIELDS = new Set(requestFieldKeys('poll').root);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const IDEMPOTENCY_KEY = /^[\x21-\x7E]{1,255}$/;
 
-/** Erreurs de l'auteur facultatif (e-mail du journaliste), commun à toutes les créations. */
-export function authorErrors(author) {
-  if (author === undefined || author === null) return [];
-  if (typeof author !== 'string') {
-    return [{ field: 'author', code: 'invalid_type', message: 'L\'auteur doit être une adresse e-mail.' }];
+function emailErrors(value, field, label) {
+  if (value === undefined || value === null) return [];
+  if (typeof value !== 'string') {
+    return [{ field, code: 'invalid_type', message: `${label.the} doit être une adresse e-mail.` }];
   }
-  if (author.length > 254 || !EMAIL.test(author)) {
-    return [{ field: 'author', code: 'invalid_value', message: 'Adresse e-mail de l\'auteur invalide.' }];
+  if (value.length > 254 || !EMAIL.test(value)) {
+    return [{ field, code: 'invalid_value', message: `Adresse e-mail ${label.of} invalide.` }];
   }
   return [];
 }
+
+/** Erreurs de l'auteur facultatif (e-mail du journaliste), commun à toutes les créations. */
+export const authorErrors = (author) => emailErrors(author, 'author', { the: 'L\'auteur', of: 'de l\'auteur' });
+
+/** Erreurs de l'éditeur facultatif d'une modification (`PUT`, e-mail fixé par le Hub). */
+export const editorErrors = (editor) => emailErrors(editor, 'editor', { the: 'L\'éditeur', of: 'de l\'éditeur' });
 
 /**
  * Corps JSON → entrée partagée `PollInput`. Toutes les violations sont réunies en une erreur.
@@ -170,7 +178,8 @@ export async function getPoll({ id }, { store, clientBaseUrl }) {
   if (!doc || doc.type !== 'poll') {
     throw new ApiError(404, 'NOT_FOUND', 'Sondage introuvable');
   }
-  return pollResponse(doc, clientBaseUrl);
+  // Requête de modification pré-remplie et version à renvoyer avec elle (`PUT`, specs/006-hub-edit).
+  return { ...pollResponse(doc, clientBaseUrl), form: pollFormFromDoc(doc), version: widgetVersion(doc) };
 }
 
 /**

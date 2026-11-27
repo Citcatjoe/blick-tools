@@ -1,6 +1,6 @@
 import { ApiError, sendJson, sendProblem } from './errors.js';
 import { parseCreatePollRequest, parseIdempotencyKey, createPoll, getPoll, updatePoll } from './polls.js';
-import { RESOURCE_TYPES, parseCreateRequest, createWidget, getWidget } from './widgets.js';
+import { RESOURCE_TYPES, parseCreateRequest, createWidget, getWidget, updateWidget } from './widgets.js';
 import { uploadImage } from './uploads.js';
 import { WIDGET_FORMS, listTeamsForPicker } from '@rms/widget-model';
 
@@ -25,6 +25,14 @@ const payloadTooLarge = () =>
     detail: `Maximum ${MAX_BODY_BYTES} octets.`,
     headers: { Connection: 'close' },
   });
+
+const requireJson = (req) => {
+  if (!isJson(req.headers['content-type'])) {
+    throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Type de contenu non pris en charge', {
+      detail: 'Content-Type: application/json attendu.',
+    });
+  }
+};
 
 function readJsonBody(req) {
   if (Number(req.headers['content-length']) > MAX_BODY_BYTES) {
@@ -104,24 +112,27 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
       if (widgetRoute) {
         const type = RESOURCE_TYPES[widgetRoute[1]];
         const id = widgetRoute[2] === undefined ? undefined : decodeSegment(widgetRoute[2]);
-        const allowed = id === undefined ? 'POST' : 'GET';
-        if (req.method !== allowed) {
-          throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: allowed } });
+        const allowed = id === undefined ? ['POST'] : ['GET', 'PUT'];
+        if (!allowed.includes(req.method)) {
+          throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: allowed.join(', ') } });
         }
         caller = await verifyCaller(req.headers.authorization);
 
-        if (id !== undefined) {
+        if (id !== undefined && req.method === 'GET') {
           const result = await getWidget(type, { id }, { store, clientBaseUrl });
           sendJson(res, 200, result);
           log('INFO', `${type} read`, { caller: caller.email, widgetId: id, status: 200, durationMs: Date.now() - startedAt });
           return;
         }
-
-        if (!isJson(req.headers['content-type'])) {
-          throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Type de contenu non pris en charge', {
-            detail: 'Content-Type: application/json attendu.',
-          });
+        if (id !== undefined) {
+          requireJson(req);
+          const result = await updateWidget(type, { id, body: await readJsonBody(req) }, { store, clientBaseUrl, images, imageStore });
+          sendJson(res, 200, result);
+          log('INFO', `${type} edited`, { caller: caller.email, widgetId: id, status: 200, durationMs: Date.now() - startedAt });
+          return;
         }
+
+        requireJson(req);
         const idempotencyKey = parseIdempotencyKey(req.headers['idempotency-key']);
         const { input, author, context } = await parseCreateRequest(type, await readJsonBody(req), { store });
         const result = await createWidget(type, { input, author, context, caller, idempotencyKey }, { store, clientBaseUrl, images, imageStore });
@@ -160,11 +171,7 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
         }
 
         caller = await verifyCaller(req.headers.authorization);
-        if (!isJson(req.headers['content-type'])) {
-          throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Type de contenu non pris en charge', {
-            detail: 'Content-Type: application/json attendu.',
-          });
-        }
+        requireJson(req);
         const idempotencyKey = parseIdempotencyKey(req.headers['idempotency-key']);
         const { input, author } = parseCreatePollRequest(await readJsonBody(req));
         const result = await createPoll({ input, author, caller, idempotencyKey }, { store, clientBaseUrl });
@@ -190,18 +197,21 @@ export function createApp({ verifyCaller, store, clientBaseUrl, images, imageSto
           log('INFO', 'poll read', { caller: caller.email, widgetId: id, status: 200, durationMs: Date.now() - startedAt });
           return;
         }
+        if (req.method === 'PUT') {
+          requireJson(req);
+          const result = await updateWidget('poll', { id, body: await readJsonBody(req) }, { store, clientBaseUrl, images, imageStore });
+          sendJson(res, 200, result);
+          log('INFO', 'poll edited', { caller: caller.email, widgetId: id, status: 200, durationMs: Date.now() - startedAt });
+          return;
+        }
         if (req.method === 'PATCH') {
-          if (!isJson(req.headers['content-type'])) {
-            throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Type de contenu non pris en charge', {
-              detail: 'Content-Type: application/json attendu.',
-            });
-          }
+          requireJson(req);
           const result = await updatePoll({ id, body: await readJsonBody(req) }, { store, clientBaseUrl });
           sendJson(res, 200, result);
           log('INFO', 'poll updated', { caller: caller.email, widgetId: id, status: 200, durationMs: Date.now() - startedAt });
           return;
         }
-        throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: 'GET, PATCH' } });
+        throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Méthode non autorisée', { headers: { Allow: 'GET, PATCH, PUT' } });
       }
 
       throw new ApiError(404, 'NOT_FOUND', 'Ressource inconnue');

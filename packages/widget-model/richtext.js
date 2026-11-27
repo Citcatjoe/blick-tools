@@ -25,6 +25,9 @@ export const escapeHtmlText = (text) => text
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
+/** Inverse de `escapeHtmlText` pour relire un texte simple stocké (`&lt;`, `&gt;`, `&amp;`). */
+export const unescapeHtmlText = (text) => text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
 const escapeAttribute = (value) => value
   .replace(/&/g, '&amp;')
   .replace(/"/g, '&quot;')

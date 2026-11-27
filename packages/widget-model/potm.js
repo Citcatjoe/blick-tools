@@ -2,7 +2,11 @@
 // Les équipes proposées viennent de la liste statique `data/teams.json` (équipes nationales et
 // clubs de National League), filtrée par contexte (`data/contexts.json`).
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkDate, checkList, checkText, checkTheme, errorCollector, isMissing, isPlainObject, newId, deepFreeze } from './common.js';
+import {
+  BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkDate, checkList, checkText, checkTheme, errorCollector, formCommon, isMissing, isPlainObject,
+  newId, deepFreeze, statsOnEdit, withoutUndefined,
+} from './common.js';
+import { formatDate, timestampToDate } from './dates.js';
 import teams from './data/teams.json' with { type: 'json' };
 import contexts from './data/contexts.json' with { type: 'json' };
 
@@ -119,4 +123,42 @@ export function buildPotmSaveData({ context, category, text, date, players, bran
     theme,
     counterViews: 0,
   };
+}
+
+/**
+ * Document stocké → requête de modification (`PUT /potms/{id}`) : date du match en jour suisse,
+ * poste ramené à sa valeur neutre, candidats avec leur id.
+ */
+export function potmFormFromDoc(doc) {
+  const context = doc?.data?.context ?? {};
+  const date = timestampToDate(context.date);
+  return withoutUndefined({
+    context: context.context ?? '',
+    category: context.category ?? '',
+    text: context.text ?? '',
+    date: date ? formatDate(date) : undefined,
+    players: (doc?.data?.players ?? []).map((player) => ({
+      id: player?.id ?? '',
+      name: player?.name ?? '',
+      position: POTM_POSITIONS.find((position) => potmPositionForCategory(position, context.category) === player?.position) ?? player?.position ?? '',
+      team: player?.team ?? '',
+    })),
+    ...formCommon(doc),
+  });
+}
+
+/**
+ * Votes après modification (transaction du dashboard) : par id de candidat ; à défaut, ceux d'un
+ * ancien candidat (même id, puis même nom) ; 0 pour un nouveau.
+ */
+export function potmStatsOnEdit(current, next) {
+  const votes = current?.stats?.playersVotes || {};
+  const legacy = current?.data?.players || [];
+  return statsOnEdit(current, next, {
+    playersVotes: Object.fromEntries((next.data.players ?? []).map((player) => {
+      if (votes[player.id]) return [player.id, votes[player.id]];
+      const old = legacy.find((p) => p.id === player.id) || legacy.find((p) => p.name === player.name);
+      return [player.id, old?.votes || 0];
+    })),
+  });
 }

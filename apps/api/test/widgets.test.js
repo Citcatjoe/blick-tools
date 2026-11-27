@@ -15,7 +15,7 @@ import { createCallerVerifier } from '../src/auth.js';
 import { AlreadyExistsError } from '../src/errors.js';
 import { ImageError, fetchImageSafely, isPublicAddress, toDashboardWebp, IMAGE_TARGET_BYTES } from '../src/images.js';
 import { UPLOAD_PREFIX, parseStorageUrl } from '../src/imageStore.js';
-import { parseDate, parseDateTime } from '../src/dates.js';
+import { parseDate, parseDateTime } from '@rms/widget-model';
 
 const AUDIENCE = 'https://blick-tools-api.test';
 const BASE = 'https://example.test/bl-tools-client-';
@@ -54,6 +54,8 @@ const TEAMS = [
 let docs;
 let nextId;
 let failNextCreate;
+let beforeUpdate; // écriture concurrente simulée entre la lecture préalable et la transaction
+let clock;
 const store = {
   serverTimestamp: () => TS,
   toTimestamp: fakeTimestamp,
@@ -65,6 +67,14 @@ const store = {
   },
   async get(id) { return docs.get(id) ?? null; },
   async listTeams() { return structuredClone(TEAMS); },
+  now: () => fakeTimestamp(new Date(Date.UTC(2026, 10, 27, 12, 0, ++clock))),
+  // Transaction en mémoire : relit le document, applique les blocs de premier niveau du `patch`.
+  async update(id, compute) {
+    beforeUpdate?.();
+    const result = compute(docs.get(id) ?? null);
+    if (result?.patch) docs.set(id, { ...docs.get(id), ...result.patch });
+    return result;
+  },
 };
 
 // Images : téléchargement factice ; conversion réelle sauf pour le contenu factice « image » ;
@@ -114,6 +124,7 @@ before(async () => {
 after(() => server.close());
 beforeEach(() => {
   docs = new Map(); nextId = 0; failNextCreate = false; fetched = []; stored = []; removed = []; objects = new Map();
+  beforeUpdate = undefined; clock = 0;
 });
 
 async function call(method, path, body, { token = 'hub', headers = {} } = {}) {
@@ -125,6 +136,8 @@ async function call(method, path, body, { token = 'hub', headers = {} } = {}) {
   return { status: response.status, headers: response.headers, json: await response.json() };
 }
 const fields = (res) => res.json.errors.map(({ field, code }) => [field, code]);
+// Lecture sans le formulaire de modification ni la version (vérifiés par les tests de `PUT`).
+const projection = ({ form, version, ...rest }) => rest;
 
 const CALENDAR = {
   title: ' Coupe du monde ', theme: 'Sport',
@@ -263,7 +276,7 @@ test('401 / 403 / 404 / 405 / 415 sur les nouvelles ressources', async () => {
   assert.equal(put.headers.get('allow'), 'POST');
   const patch = await call('PATCH', '/tinders/x', {});
   assert.equal(patch.status, 405);
-  assert.equal(patch.headers.get('allow'), 'GET');
+  assert.equal(patch.headers.get('allow'), 'GET, PUT');
   const form = await fetch(`${url}/calendars`, { method: 'POST', headers: { Authorization: 'Bearer hub', 'Content-Type': 'text/plain' }, body: 'x' });
   assert.equal(form.status, 415);
 });
@@ -378,7 +391,7 @@ test('GET : projections par format avec compteurs, autre format → 404', async 
   docs.get(cal.json.id).stats.seeAllClicks = 4;
   const gotCal = await call('GET', `/calendars/${cal.json.id}`);
   assert.equal(gotCal.status, 200);
-  assert.deepEqual(gotCal.json, {
+  assert.deepEqual(projection(gotCal.json), {
     id: cal.json.id, embedUrl: cal.json.embedUrl, title: 'Coupe du monde',
     dates: [
       { text: 'Finale', complement: 'Lusail', start: '2026-12-20T19:45:00.000Z' },
@@ -531,7 +544,7 @@ test('POST /teasers : image copiée sous teasers/, titre en \\n littéral, docum
 
   Object.assign(doc.stats, { views: 9, clicks: 4 });
   const got = await call('GET', `/teasers/${id}`);
-  assert.deepEqual(got.json, {
+  assert.deepEqual(projection(got.json), {
     id, embedUrl, label: 'Votations', title: TEASER.title, img, button: TEASER.button, views: 9, clicks: 4, theme: 'Suisse', brand: 'blick',
   });
 });
@@ -549,7 +562,7 @@ test('POST /folders : boutons avec ids et clics à 0, image copiée sous folders
 
   doc.stats.buttonClicks[ids[1]] = 6;
   const got = await call('GET', `/folders/${id}`);
-  assert.deepEqual(got.json, {
+  assert.deepEqual(projection(got.json), {
     id, embedUrl, label: 'Mondial', labelColor: 'sport', name: FOLDER.name, img,
     buttons: [
       { id: ids[0], text: 'Programme', href: 'https://www.blick.ch/a', newTab: false, clicks: 0 },
@@ -574,7 +587,7 @@ test('POST /natinotes : joueurs copiés depuis les effectifs, paragraphe nettoy�
 
   doc.stats.playerRatings = { 'granit-xhaka': { 5: 40, 6: 8 } };
   const got = await call('GET', `/natinotes/${id}`);
-  assert.deepEqual(got.json, {
+  assert.deepEqual(projection(got.json), {
     id, embedUrl, title: 'Suisse – Kosovo', showRecap: false,
     players: [
       { id: 'granit-xhaka', name: 'Granit Xhaka', team: 'Suisse', img: xhaka.img, blickRating: 5, comment: xhaka.comment, ratings: { 5: 40, 6: 8 } },
@@ -613,7 +626,7 @@ test('POST /potms : date à midi heure suisse, postes accordés (Dames), équipe
 
   doc.stats.playersVotes[ids[0]] = 12;
   const got = await call('GET', `/potms/${id}`);
-  assert.deepEqual(got.json, {
+  assert.deepEqual(projection(got.json), {
     id, embedUrl, context: 'national', category: 'Dames', text: 'Suisse – Norvège', date: '2026-12-20',
     players: [
       { id: ids[0], name: 'Alisha Lehmann', position: 'Attaquante', team: POTM_TEAM_A.name, votes: 12 },
@@ -678,7 +691,7 @@ test('POST /pronos : équipes complétées par teams.json, un vote par issue, da
 
   doc.stats.itemVotes.item2 = 7;
   const got = await call('GET', `/pronos/${id}`);
-  assert.deepEqual(got.json, {
+  assert.deepEqual(projection(got.json), {
     id, embedUrl, event: PRONO.event, date: '2026-06-15', team1: PRONO.team1, team2: PRONO.team2,
     votes: { team1: 1, team2: 7, draw: 1 }, views: 0, theme: 'Sport', brand: 'blick',
   });
@@ -705,7 +718,7 @@ test('POST /testimonies : textes rognés, date limite en heure suisse, compteurs
   doc.stats.msgSent = 3;
   doc.messages = [{ name: 'Lecteur', email: 'lecteur@example.ch', message: 'Mon témoignage' }];
   const got = await call('GET', `/testimonies/${id}`);
-  assert.deepEqual(got.json, {
+  assert.deepEqual(projection(got.json), {
     id, embedUrl, title: TESTIMONY.title, subject: TESTIMONY.subject, question: TESTIMONY.question,
     timeExpires: '2026-12-20T19:45:00.000Z', views: 0, msgSent: 3, theme: 'Suisse', brand: 'blick',
   });
@@ -766,7 +779,7 @@ test('routage : une ressource par format décrit (hors sondage), autre format ou
     const put = await call('PUT', `/${form.resource}`, {});
     assert.deepEqual([put.status, put.headers.get('allow')], [405, 'POST'], form.resource);
     const del = await call('DELETE', `/${form.resource}/x`);
-    assert.deepEqual([del.status, del.headers.get('allow')], [405, 'GET'], form.resource);
+    assert.deepEqual([del.status, del.headers.get('allow')], [405, 'GET, PUT'], form.resource);
     assert.equal((await call('POST', `/${form.resource}`, {}, { token: null })).status, 401, form.resource);
   }
   const teaser = await call('POST', '/teasers', TEASER);
@@ -774,6 +787,226 @@ test('routage : une ressource par format décrit (hors sondage), autre format ou
   for (const path of ['/testimony', '/prono', '/teasers/a/b', '/teams/x', '/constructor', '/__proto__', '/hasOwnProperty/x']) {
     assert.equal((await call('POST', path, {})).status, 404, path);
   }
+});
+
+// ---------------------------------------------------------------- modification (PUT, spec 006)
+
+const V0 = '2026-11-01T10:00:00.000Z';
+const EDITOR = 'jane.doe@ringier.ch';
+
+/** Création par l'API, horodatage relu comme Firestore, compteurs posés ; renvoie id + document. */
+async function created(resource, body, stats = {}) {
+  const res = await call('POST', `/${resource}`, body);
+  assert.equal(res.status, 201, JSON.stringify(res.json.errors ?? ''));
+  const doc = docs.get(res.json.id);
+  doc.meta.timeCreated = fakeTimestamp(new Date('2026-10-01T08:00:00Z'));
+  doc.meta.timeUpdated = fakeTimestamp(new Date(V0));
+  Object.assign(doc.stats, stats);
+  return { id: res.json.id, doc };
+}
+
+/** GET → `form` + `version`, puis PUT du formulaire modifié par `change`. */
+async function editVia(resource, id, change = (form) => form, extra = { editor: EDITOR }) {
+  const got = await call('GET', `/${resource}/${id}`);
+  assert.equal(got.status, 200);
+  const res = await call('PUT', `/${resource}/${id}`, { ...change(structuredClone(got.json.form)), version: got.json.version, ...extra });
+  return { got, res, doc: docs.get(id) };
+}
+
+/** Méta d'un document modifié : id, auteur et création gardés ; version = nouveau `timeUpdated`. */
+function assertEdited(res, doc, { id, author = 'Hub Rédaction', editor = EDITOR }) {
+  assert.equal(res.status, 200, JSON.stringify(res.json.errors ?? res.json));
+  assert.deepEqual(Object.keys(res.json), ['id', 'embedUrl', 'version']);
+  assert.equal(res.json.id, id);
+  assert.notEqual(res.json.version, V0);
+  assert.equal(doc.meta.timeUpdated.toDate().toISOString(), res.json.version);
+  assert.deepEqual(
+    [doc.meta.id, doc.meta.author, doc.meta.deleted, doc.meta.timeCreated.toDate().toISOString(), doc.meta.lastEditor],
+    [id, author, false, '2026-10-01T08:00:00.000Z', editor],
+  );
+}
+
+test('PUT /polls/{id} : réponses par id, votes gardés, nouvelle à 0, retirée sans votes ; PATCH inchangé', async () => {
+  const res = await call('POST', '/polls', { question: 'Q ?', answers: ['Oui', 'Non', 'Bof'], theme: 'Suisse', brand: 'pme' });
+  const id = res.json.id;
+  const doc = docs.get(id);
+  const [a, b] = doc.data.answerTxts.map((answer) => answer.id);
+  Object.assign(doc.meta, { timeCreated: fakeTimestamp(new Date('2026-10-01T08:00:00Z')), timeUpdated: fakeTimestamp(new Date(V0)) });
+  doc.stats.answerCounters = { ...doc.stats.answerCounters, [a]: 3, [b]: 5 };
+  doc.stats.views = 40;
+
+  const got = await call('GET', `/polls/${id}`);
+  assert.deepEqual([got.json.form, got.json.version], [{ question: 'Q ?', answers: [{ id: a, text: 'Oui' }, { id: b, text: 'Non' }, { id: doc.data.answerTxts[2].id, text: 'Bof' }], theme: 'Suisse', brand: 'pme' }, V0]);
+  const put = await call('PUT', `/polls/${id}`, {
+    ...got.json.form, question: ' Nouvelle ? ', answers: [{ id: b, text: 'Non !' }, 'Peut-être', { id: a, text: 'Oui' }], version: V0, editor: EDITOR,
+  });
+  const after = docs.get(id);
+  assertEdited(put, after, { id });
+  assert.equal(put.json.embedUrl, `${BASE}poll/?pollDoc=${id}&brand=pme`);
+  const added = after.data.answerTxts[1].id;
+  assert.deepEqual(after.data.answerTxts, [{ id: b, text: 'Non !' }, { id: added, text: 'Peut-être' }, { id: a, text: 'Oui' }]);
+  assert.deepEqual(after.stats, { views: 40, answerCounters: { [b]: 5, [added]: 0, [a]: 3 } });
+  assert.deepEqual([after.data.question, after.meta.title, after.meta.brand], ['Nouvelle ?', 'Nouvelle ?', 'pme']);
+  assert.equal((await call('GET', `/polls/${id}`)).json.version, put.json.version);
+  const patched = await call('PATCH', `/polls/${id}`, { editor: EDITOR, question: 'Encore ?' });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.json.form, undefined, 'réponse du PATCH inchangée');
+});
+
+test('PUT /calendars, /teasers, /testimonies : compteurs globaux gardés, lien global retiré avec son compteur', async () => {
+  const cal = await created('calendars', CALENDAR, { views: 7, seeAllClicks: 4, globalLinkClicks: 2 });
+  const { res, doc } = await editVia('calendars', cal.id, ({ linkGlobal, ...form }) => ({ ...form, title: 'Autre', nbElemsToShow: 1 }));
+  assertEdited(res, doc, { id: cal.id });
+  assert.deepEqual([doc.data.title, doc.data.nbElemsToShow, doc.data.linkGlobalHref, doc.meta.title], ['Autre', 1, '', 'Autre']);
+  assert.deepEqual(doc.stats, { views: 7, seeAllClicks: 4 });
+  assert.equal(doc.data.dates[0].scheduleStart.toDate().toISOString(), '2026-12-20T19:45:00.000Z', 'date relue en heure suisse puis réécrite à l\'identique');
+
+  const teaser = await created('teasers', TEASER, { views: 9, clicks: 4 });
+  const edited = await editVia('teasers', teaser.id, (form) => ({ ...form, title: 'Deux\nlignes' }));
+  assertEdited(edited.res, edited.doc, { id: teaser.id });
+  assert.deepEqual([edited.doc.data.title, edited.doc.stats], ['Deux\\nlignes', { views: 9, clicks: 4 }]);
+
+  const testimony = await created('testimonies', TESTIMONY, { views: 5, msgSent: 2 });
+  const open = await editVia('testimonies', testimony.id, ({ timeExpires, ...form }) => form);
+  assertEdited(open.res, open.doc, { id: testimony.id });
+  assert.deepEqual([open.doc.data.timeExpires, open.doc.stats], [null, { views: 5, msgSent: 2 }]);
+});
+
+test('PUT /tinders : votes par id de carte, réordonnées ; nouvelle carte à 0 ; carte retirée sans votes', async () => {
+  const { id, doc } = await created('tinders', TINDER);
+  const [c1, c2, c3] = doc.data.tinderCards.map((card) => card.id);
+  doc.stats.tinderVotes = { [c1]: { yes: 1, no: 2 }, [c2]: { yes: 3, no: 4 }, [c3]: { yes: 5, no: 6 } };
+  const { got, res, doc: after } = await editVia('tinders', id, (form) => ({ ...form, cards: [form.cards[2], { label: 'N', title: 'Neuve' }, form.cards[0]], legend: 'Glisse' }));
+  assert.deepEqual(got.json.form.cards.map((card) => card.id), [c1, c2, c3]);
+  assertEdited(res, after, { id });
+  const added = after.data.tinderCards[1].id;
+  assert.deepEqual(after.stats.tinderVotes, { [c3]: { yes: 5, no: 6 }, [added]: { yes: 0, no: 0 }, [c1]: { yes: 1, no: 2 } });
+  assert.deepEqual(after.data.tinderLegend, { txt: 'Glisse', display: true });
+});
+
+test('PUT /quizzes : statistiques par id de question, distribution ramenée à 0..n, image inchangée gardée sans téléchargement', async () => {
+  const { id, doc } = await created('quizzes', QUIZ);
+  const [q1, q2] = doc.data.questions.map((question) => question.id);
+  Object.assign(doc.stats, { statsQuestions: { [q1]: { correct: 5, incorrect: 1 }, [q2]: { correct: 2, incorrect: 4 } }, statsGlobal: { scoreDistribution: { 0: 1, 1: 3, 2: 2 } } });
+  const before = { fetched: fetched.length, stored: stored.length };
+  const { res, doc: after } = await editVia('quizzes', id, (form) => ({ ...form, questions: [form.questions[0]] }));
+  assertEdited(res, after, { id, author: 'jane@ringier.ch' });
+  assert.deepEqual({ fetched: fetched.length, stored: stored.length }, before);
+  assert.equal(after.data.questions[0].img, doc.data.questions[0].img);
+  assert.deepEqual(after.stats.statsQuestions, { [q1]: { correct: 5, incorrect: 1 } });
+  assert.deepEqual(after.stats.statsGlobal, { scoreDistribution: { 0: 1, 1: 3 } });
+});
+
+test('PUT : nouvelle image importée sous le préfixe du format, ancienne copie gardée dans le Storage', async () => {
+  const teaser = await created('teasers', TEASER);
+  const oldImg = teaser.doc.data.img;
+  const { res, doc } = await editVia('teasers', teaser.id, (form) => ({ ...form, img: 'https://images.ringier.ch/new.jpg' }));
+  assertEdited(res, doc, { id: teaser.id });
+  assert.deepEqual(fetched, [TEASER.img, 'https://images.ringier.ch/new.jpg']);
+  assert.equal(doc.data.img, storageUrl('teasers/2.webp'));
+  assert.deepEqual(removed, []);
+  assert.ok(objects.has('teasers/1.webp'), `${oldImg} non supprimée`);
+
+  const sent = await upload(await photo(), 'image/jpeg');
+  const facts = await created('facts', FACTS, { reveal: 3, ratingStats: { 8: 2 } });
+  const edited = await editVia('facts', facts.id, (form) => ({ ...form, items: form.items.map((item) => (item.type === 'picture' ? { ...item, src: sent.json.url } : item)) }));
+  assertEdited(edited.res, edited.doc, { id: facts.id });
+  assert.equal(edited.doc.data.items[1].picture, facts.doc.data.items[1].picture, 'image inchangée gardée');
+  assert.equal(edited.doc.data.items[2].src, storageUrl('factss/6.webp'), 'envoi copié sous factss/');
+  assert.deepEqual(edited.doc.data.items.map((item) => item.id), facts.doc.data.items.map((item) => item.id));
+  assert.deepEqual(edited.doc.stats, { views: 0, reveal: 3, ratingStats: { 8: 2 } });
+
+  const broken = await editVia('teasers', teaser.id, (form) => ({ ...form, img: 'https://cdn.example/broken.jpg' }));
+  assert.deepEqual(fields(broken.res), [['img', 'invalid_value']]);
+});
+
+test('PUT /folders, /potms, /pronos : compteurs par id (ou par issue), élément retiré sans compteur', async () => {
+  const folder = await created('folders', FOLDER);
+  const [b1, b2] = folder.doc.data.buttons.map((button) => button.id);
+  folder.doc.stats.buttonClicks = { [b1]: 10, [b2]: 20 };
+  const f = await editVia('folders', folder.id, (form) => ({ ...form, labelColor: 'brand', buttons: [form.buttons[1], { text: 'Neuf', href: 'https://x.ch' }] }));
+  assertEdited(f.res, f.doc, { id: folder.id });
+  assert.deepEqual(f.doc.stats.buttonClicks, { [b2]: 20, [f.doc.data.buttons[1].id]: 0 });
+  assert.equal(f.doc.data.folderLabelColor, 'bg-brand');
+  assert.equal(f.doc.data.img, folder.doc.data.img);
+
+  const potm = await created('potms', POTM);
+  const [p1, p2] = potm.doc.data.players.map((player) => player.id);
+  potm.doc.stats.playersVotes = { [p1]: 12, [p2]: 3 };
+  const p = await editVia('potms', potm.id, (form) => {
+    assert.deepEqual(form.players.map(({ position }) => position), ['Attaquant', 'Milieu'], 'poste neutre relu');
+    return { ...form, category: 'Messieurs', players: [form.players[1], form.players[0]] };
+  });
+  assertEdited(p.res, p.doc, { id: potm.id });
+  assert.deepEqual(p.doc.stats.playersVotes, { [p2]: 3, [p1]: 12 });
+  assert.deepEqual(p.doc.data.players.map(({ position }) => position), ['Milieu', 'Attaquant']);
+
+  const prono = await created('pronos', PRONO, { itemVotes: { item1: 10, item2: 20, item3: 5 } });
+  prono.doc.data.pronoData.item1.color = '#123456';
+  const r = await editVia('pronos', prono.id, (form) => ({ ...form, team2: PRONO_TEAMS[2].name }));
+  assertEdited(r.res, r.doc, { id: prono.id });
+  assert.deepEqual(r.doc.stats.itemVotes, { item1: 10, item2: 20, item3: 5 });
+  assert.deepEqual([r.doc.data.pronoData.item1.color, r.doc.data.pronoData.item2.name], ['#123456', PRONO_TEAMS[2].name]);
+});
+
+test('PUT /natinotes : joueur déjà enregistré accepté même archivé, notes gardées par joueur, label conservé', async () => {
+  const { id, doc } = await created('natinotes', NATINOTES);
+  doc.data.label = 'Ancien';
+  doc.data.players.push({ id: 'yann-sommer', name: 'Yann Sommer', team: 'Suisse', img: null, focal: { x: 50, y: 0, zoom: 1 }, blickRating: 6, comment: 'Mur' });
+  doc.stats.playerRatings = { 'granit-xhaka': { 5: 4 }, 'armando-broja': { 2: 1 }, 'yann-sommer': { 6: 9 } };
+  const { got, res, doc: after } = await editVia('natinotes', id, (form) => ({ ...form, players: form.players.filter((player) => player.id !== 'armando-broja') }));
+  assert.deepEqual(got.json.form.players.map((player) => player.id), ['granit-xhaka', 'armando-broja', 'yann-sommer']);
+  assertEdited(res, after, { id });
+  assert.deepEqual(after.stats.playerRatings, { 'granit-xhaka': { 5: 4 }, 'yann-sommer': { 6: 9 } });
+  assert.equal(after.data.label, 'Ancien');
+  const archived = await call('PUT', `/natinotes/${id}`, { ...got.json.form, players: [{ id: 'yann-sommer', blickRating: 6, comment: 'x' }], version: got.json.version });
+  assert.equal(archived.status, 409, 'version déjà consommée');
+});
+
+test('PUT : 409 VERSION_CONFLICT sur version périmée ou écriture concurrente, images copiées supprimées', async () => {
+  const { id } = await created('teasers', TEASER);
+  const first = await editVia('teasers', id, (form) => ({ ...form, label: 'Un' }));
+  assert.equal(first.res.status, 200);
+  const stale = await call('PUT', `/teasers/${id}`, { ...first.got.json.form, label: 'Deux', version: V0 });
+  assert.deepEqual([stale.status, stale.json.code], [409, 'VERSION_CONFLICT']);
+  assert.equal(docs.get(id).data.label, 'Un');
+
+  const version = first.res.json.version;
+  beforeUpdate = () => { docs.get(id).meta.timeUpdated = fakeTimestamp(new Date('2026-12-01T00:00:00Z')); };
+  const raced = await call('PUT', `/teasers/${id}`, { ...first.got.json.form, img: 'https://images.ringier.ch/new.jpg', version });
+  assert.deepEqual([raced.status, raced.json.code], [409, 'VERSION_CONFLICT']);
+  assert.deepEqual(removed, ['teasers/2.webp'], 'copie de la nouvelle image supprimée');
+});
+
+test('PUT : 404 absent, supprimé ou autre format ; 400 groupé ; unknown_field ; 405 / 415', async () => {
+  const { id, doc } = await created('tinders', TINDER);
+  const form = (await call('GET', `/tinders/${id}`)).json.form;
+  const body = { ...form, version: V0 };
+  assert.equal((await call('PUT', '/tinders/inconnu', body)).status, 404);
+  assert.equal((await call('PUT', `/quizzes/${id}`, body)).status, 404);
+  assert.equal((await call('PUT', `/polls/${id}`, body)).status, 404);
+
+  const bad = await call('PUT', `/tinders/${id}`, {
+    ...form, title: ' ', author: 'x@ringier.ch', cards: [{ ...form.cards[0], id: 42, extra: 1 }, form.cards[1]], editor: 'pas un e-mail', version: undefined,
+  });
+  assert.equal(bad.status, 400);
+  assert.deepEqual(fields(bad), [
+    ['author', 'unknown_field'], ['cards[0].extra', 'unknown_field'], ['cards[0].id', 'invalid_type'],
+    ['title', 'required'], ['cards', 'too_few'], ['version', 'required'], ['editor', 'invalid_value'],
+  ]);
+  const quiz = await created('quizzes', QUIZ);
+  const quizForm = (await call('GET', `/quizzes/${quiz.id}`)).json.form;
+  quizForm.questions[0].answers[0].id = 'a1';
+  assert.deepEqual(fields(await call('PUT', `/quizzes/${quiz.id}`, { ...quizForm, version: V0 })), [['questions[0].answers[0].id', 'unknown_field']]);
+  assert.deepEqual(fields(await call('PUT', `/quizzes/${quiz.id}`, [])), [['body', 'invalid_type']]);
+
+  doc.meta.deleted = true;
+  assert.equal((await call('PUT', `/tinders/${id}`, body)).status, 404);
+  const text = await fetch(`${url}/tinders/${id}`, { method: 'PUT', headers: { Authorization: 'Bearer hub', 'Content-Type': 'text/plain' }, body: 'x' });
+  assert.equal(text.status, 415);
+  assert.equal((await call('PUT', `/tinders/${id}`, body, { token: 'stranger' })).status, 403);
+  const del = await call('DELETE', '/polls/x');
+  assert.deepEqual([del.status, del.headers.get('allow')], [405, 'GET, PATCH, PUT']);
 });
 
 // ---------------------------------------------------------------- description des formulaires (spec 004)
@@ -885,6 +1118,16 @@ for (const form of WIDGET_FORMS) {
     const complete = sampleFrom(form.fields, { all: true });
     const accepted = await call('POST', `/${form.resource}`, complete);
     assert.equal(accepted.status, 201, `tous les champs décrits sont acceptés : ${JSON.stringify(accepted.json.errors ?? '')}`);
+
+    // Le formulaire relu (`GET … form`) se renvoie tel quel par `PUT` : contenu et compteurs inchangés.
+    const before = plain(docs.get(accepted.json.id));
+    const got = await call('GET', `/${form.resource}/${accepted.json.id}`);
+    const fetchedBefore = fetched.length;
+    const put = await call('PUT', `/${form.resource}/${accepted.json.id}`, { ...got.json.form, version: got.json.version });
+    assert.equal(put.status, 200, `formulaire relu accepté : ${JSON.stringify(put.json.errors ?? put.json)}`);
+    const after = docs.get(accepted.json.id);
+    assert.deepEqual([plain(after.data), plain(after.stats), after.meta.title, after.meta.lastEditor], [before.data, before.stats, before.meta.title, 'Hub Rédaction']);
+    assert.equal(fetched.length, fetchedBefore, 'aucune image retéléchargée');
 
     for (const path of requiredPaths(form.fields)) {
       const res = await call('POST', `/${form.resource}`, withPath(minimal, path));

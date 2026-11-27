@@ -1,7 +1,7 @@
 // Règles métier du widget `poll`, communes au dashboard et à l'API.
 // Valeurs admises relevées en production le 2026-11-09 (specs/001-poll-create-api/research.md R3).
 
-import { WIDGET_THEMES } from './common.js';
+import { WIDGET_THEMES, formCommon, statsOnEdit } from './common.js';
 
 export const POLL_BRANDS = Object.freeze(['blick', 'pme']);
 export const POLL_THEMES = WIDGET_THEMES;
@@ -121,4 +121,24 @@ export function buildPollSaveData({ question, answers, answerCounters, brand, th
     brand: brand || DEFAULT_POLL_BRAND,
     theme,
   };
+}
+
+/**
+ * Document stocké → requête de modification (`PUT /polls/{id}`) : les réponses portent leur id.
+ * @returns {{ question: string, answers: { id: string, text: string }[], theme: string, brand: string }}
+ */
+export function pollFormFromDoc(doc) {
+  return {
+    question: doc?.data?.question ?? '',
+    answers: (doc?.data?.answerTxts ?? []).map((answer) => ({ id: answer?.id ?? '', text: answer?.text ?? '' })),
+    ...formCommon(doc),
+  };
+}
+
+/** Votes après modification (transaction du dashboard) : par id de réponse, 0 pour une nouvelle. */
+export function pollStatsOnEdit(current, next) {
+  const counters = current?.stats?.answerCounters ?? {};
+  return statsOnEdit(current, next, {
+    answerCounters: Object.fromEntries((next.data.answerTxts ?? []).map(({ id }) => [id, counters[id] || 0])),
+  });
 }

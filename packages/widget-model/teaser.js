@@ -1,6 +1,9 @@
 // Règles et construction du widget `teaser`, communes au dashboard et à l'API.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkHttpUrl, checkImage, checkOptionalBoolean, checkText, checkTheme, errorCollector, isPlainObject, toLiteralNewlines } from './common.js';
+import {
+  BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkHttpUrl, checkImage, checkOptionalBoolean, checkText, checkTheme, errorCollector, formCommon,
+  fromLiteralNewlines, isPlainObject, optionalText, statsOnEdit, toLiteralNewlines, withoutUndefined,
+} from './common.js';
 
 /** Préfixe Storage des images de teaser (ImageUploader du dashboard). */
 export const TEASER_IMAGE_PREFIX = 'teasers';
@@ -49,3 +52,18 @@ export function buildTeaserSaveData({ label, title, img, button, brand, theme })
     counterClicks: 0,
   };
 }
+
+/** Document stocké → requête de modification (`PUT /teasers/{id}`) : titre avec vrais retours à la ligne. */
+export function teaserFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  return withoutUndefined({
+    label: data.label ?? '',
+    title: fromLiteralNewlines(data.title),
+    img: optionalText(data.img),
+    button: { text: data.linkGlobalTxt ?? '', href: data.linkGlobalHref ?? '', newTab: data.linkGlobalNewTab === true },
+    ...formCommon(doc),
+  });
+}
+
+/** Compteurs après modification : ceux du document (vues, clics), comme le dashboard. */
+export const teaserStatsOnEdit = (current, next) => statsOnEdit(current, next);

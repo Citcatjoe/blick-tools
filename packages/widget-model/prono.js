@@ -2,7 +2,8 @@
 // Compétitions : liste statique `data/competitions.json` ; équipes : équipes nationales de
 // `data/teams.json` (comme PronoForm.jsx).
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkDate, checkTheme, errorCollector, isMissing, deepFreeze } from './common.js';
+import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkDate, checkTheme, errorCollector, formCommon, isMissing, deepFreeze, statsOnEdit, withoutUndefined } from './common.js';
+import { formatDate, timestampToDate } from './dates.js';
 import { POTM_TEAMS } from './potm.js';
 import competitions from './data/competitions.json' with { type: 'json' };
 
@@ -85,4 +86,39 @@ export function buildPronoSaveData({ event, date, team1, team2, color1, color2, 
     theme,
     counterViews: 0,
   };
+}
+
+/** Document stocké → requête de modification (`PUT /pronos/{id}`) : date du match en jour suisse. */
+export function pronoFormFromDoc(doc) {
+  const prono = doc?.data?.pronoData ?? {};
+  const date = timestampToDate(prono.date);
+  return withoutUndefined({
+    event: prono.event ?? '',
+    date: date ? formatDate(date) : undefined,
+    team1: prono.item1?.name ?? '',
+    team2: prono.item2?.name ?? '',
+    ...formCommon(doc),
+  });
+}
+
+/**
+ * Requête de modification complétée de ce que l'API ne publie pas : la couleur choisie dans le
+ * dashboard reste celle d'une équipe inchangée ; une autre équipe prend sa couleur (PronoForm.jsx).
+ */
+export function pronoEditInput(input, current) {
+  const prono = current?.data?.pronoData ?? {};
+  const keep = (team, item) => (team === item?.name && HEX_COLOR.test(item?.color ?? '') ? item.color : undefined);
+  return { ...input, color1: keep(input.team1, prono.item1), color2: keep(input.team2, prono.item2) };
+}
+
+/**
+ * Votes après modification (transaction du dashboard) : par issue (`item1`, `item2`, `item3`),
+ * anciens votes rangés dans `pronoData` à défaut.
+ */
+export function pronoStatsOnEdit(current, next) {
+  const votes = current?.stats?.itemVotes || {};
+  const legacy = current?.data?.pronoData || {};
+  return statsOnEdit(current, next, {
+    itemVotes: Object.fromEntries(['item1', 'item2', 'item3'].map((key) => [key, votes[key] || legacy[key]?.votes || 0])),
+  });
 }

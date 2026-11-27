@@ -3,7 +3,10 @@
 // instantané figé (nom, équipe, portrait, cadrage) recopié de l'effectif à l'enregistrement, et
 // l'id du joueur sert de clé à `stats.playerRatings`.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkList, checkOptionalBoolean, checkText, checkTheme, errorCollector, isMissing, isPlainObject, trimOrEmpty } from './common.js';
+import {
+  BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkList, checkOptionalBoolean, checkText, checkTheme, errorCollector, formCommon, isMissing,
+  isPlainObject, statsOnEdit, trimOrEmpty,
+} from './common.js';
 import { normalizeFocal } from './portraitFocal.js';
 import { checkRichText, sanitizeRichText } from './richtext.js';
 
@@ -152,4 +155,29 @@ export function buildNatinotesSaveData({ title, label, players, showRecap, brand
     theme,
     counterViews: 0,
   };
+}
+
+/** Document stocké → requête de modification (`PUT /natinotes/{id}`) : `id` = id du joueur. */
+export function natinotesFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  return {
+    title: data.title ?? '',
+    players: (data.players ?? []).map((player) => ({ id: player?.id ?? '', blickRating: player?.blickRating ?? null, comment: player?.comment ?? '' })),
+    showRecap: data.showRecap !== false,
+    ...formCommon(doc),
+  };
+}
+
+/** Requête de modification complétée de ce que l'API ne publie pas : `label` d'un ancien widget. */
+export const natinotesEditInput = (input, current) => ({ ...input, label: current?.data?.label });
+
+/**
+ * Notes après modification (transaction du dashboard) : distributions des joueurs gardés ; un
+ * joueur retiré perd les siennes, un nouveau n'en a pas encore.
+ */
+export function natinotesStatsOnEdit(current, next) {
+  const ratings = current?.stats?.playerRatings || {};
+  return statsOnEdit(current, next, {
+    playerRatings: Object.fromEntries((next.data.players ?? []).filter(({ id }) => ratings[id]).map(({ id }) => [id, ratings[id]])),
+  });
 }

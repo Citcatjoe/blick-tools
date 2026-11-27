@@ -523,3 +523,36 @@ export function requestFieldKeys(type) {
   const root = [...new Set([...form.fields.map((f) => f.key), ...WIDGET_COMMON_REQUEST_FIELDS])];
   return { root, nested };
 }
+
+/**
+ * Listes dont les éléments gardent leur id d'une modification à l'autre (specs/006-hub-edit) :
+ * l'id stocké est relu dans `id` et renvoyé tel quel ; il porte les compteurs de l'élément. Les
+ * joueurs NatiNotes ont déjà leur `id` (celui de l'effectif) dans la requête de création.
+ */
+export const WIDGET_EDIT_ID_LISTS = deepFreeze({
+  poll: 'answers',
+  calendar: 'dates',
+  tinder: 'cards',
+  quiz: 'questions',
+  folder: 'buttons',
+  potm: 'players',
+  facts: 'items',
+});
+
+/** Champs propres à une modification, en plus de ceux de la création (sans `author`, conservé). */
+export const WIDGET_EDIT_REQUEST_FIELDS = Object.freeze(['version', 'editor']);
+
+/**
+ * Clés acceptées dans une requête de modification : celles de la création sans `author`, plus
+ * `version` et `editor`, plus `id` dans les éléments de la liste de `WIDGET_EDIT_ID_LISTS` (pour
+ * le sondage, une réponse est alors un objet `{ id, text }`).
+ * @returns {{ root: string[], nested: Record<string, string[]> }}
+ */
+export function editRequestFieldKeys(type) {
+  const { root, nested } = requestFieldKeys(type);
+  const list = WIDGET_EDIT_ID_LISTS[type];
+  return {
+    root: [...root.filter((key) => key !== 'author'), ...WIDGET_EDIT_REQUEST_FIELDS],
+    nested: list ? { ...nested, [list]: [...new Set(['id', ...(nested[list] ?? ['text'])])] } : nested,
+  };
+}

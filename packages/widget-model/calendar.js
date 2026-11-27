@@ -3,7 +3,11 @@
 // (`SHOW_ADVANCED_DATE_OPTIONS = false`) et absentes de l'API : elles ne sont que conservées
 // telles quelles quand le dashboard réenregistre un calendrier qui les porte déjà.
 
-import { BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkText, checkTheme, errorCollector, isBlank, isMissing, trimOrEmpty } from './common.js';
+import {
+  BLICK_ONLY_BRANDS, DEFAULT_BRAND, checkBrand, checkOptionalText, checkText, checkTheme, errorCollector, formCommon, isBlank, isMissing,
+  isPlainObject, optionalText, statsOnEdit, trimOrEmpty, withoutUndefined,
+} from './common.js';
+import { formatDateTime, timestampToDate } from './dates.js';
 
 export const CALENDAR_ALL_ELEMENTS = 100; // « Tous » dans le menu du dashboard
 export const CALENDAR_MAX_ELEMENTS_CHOICE = 10;
@@ -101,6 +105,8 @@ export function buildCalendarSaveData({ title, dates, nbElemsToShow, linkGlobal,
     calWording: name,
     nbElemsToShow: isMissing(nbElemsToShow) ? CALENDAR_ALL_ELEMENTS : nbElemsToShow,
     dates: dates.map((date) => ({
+      // Id d'une date qui en porte déjà un (modification par l'API) ; jamais créé.
+      ...(isMissing(date.id) ? {} : { id: date.id }),
       text: date.text.trim(),
       complement: trimOrEmpty(date.complement),
       scheduleStart: toTimestamp(date.start),
@@ -116,3 +122,58 @@ export function buildCalendarSaveData({ title, dates, nbElemsToShow, linkGlobal,
     theme,
   };
 }
+
+/**
+ * Document stocké → requête de modification (`PUT /calendars/{id}`). `start` en heure suisse ;
+ * `id` seulement pour une date qui en a un ; `nbElemsToShow` absent pour « Toutes » ; `linkGlobal`
+ * absent sans lien.
+ */
+export function calendarFormFromDoc(doc) {
+  const data = doc?.data ?? {};
+  const nb = data.nbElemsToShow;
+  return withoutUndefined({
+    title: data.title ?? '',
+    dates: (data.dates ?? []).map((date) => withoutUndefined({
+      id: optionalText(date?.id),
+      text: date?.text ?? '',
+      start: formatStart(date?.scheduleStart),
+      complement: optionalText(date?.complement),
+    })),
+    nbElemsToShow: Number.isInteger(nb) && nb >= 1 && nb <= CALENDAR_MAX_ELEMENTS_CHOICE ? nb : undefined,
+    linkGlobal: isBlank(data.linkGlobalHref)
+      ? undefined
+      : { text: data.linkGlobalTxt ?? '', href: data.linkGlobalHref, newTab: data.linkGlobalNewTab === true },
+    ...formCommon(doc),
+  });
+}
+
+const formatStart = (timestamp) => {
+  const date = timestampToDate(timestamp);
+  return date ? formatDateTime(date) : undefined;
+};
+
+/**
+ * Requête de modification complétée de ce que l'API ne publie pas : options avancées (fin, badge,
+ * lien live) des dates gardées, retrouvées par id.
+ */
+export function calendarEditInput(input, current) {
+  if (!Array.isArray(input.dates)) return input;
+  const stored = new Map((current?.data?.dates ?? []).filter((date) => !isMissing(date?.id)).map((date) => [date.id, date]));
+  return {
+    ...input,
+    dates: input.dates.map((date) => {
+      const previous = isPlainObject(date) ? stored.get(date.id) : undefined;
+      if (!previous) return date;
+      return {
+        ...date,
+        end: timestampToDate(previous.scheduleEnd),
+        showBadge: previous.showBadge === true,
+        liveLinkEnabled: previous.liveLinkExists === true,
+        liveLinkUrl: typeof previous.liveLinkUrl === 'string' ? previous.liveLinkUrl : '',
+      };
+    }),
+  };
+}
+
+/** Compteurs après modification : ceux du document (vues, « tout voir »), comme le dashboard. */
+export const calendarStatsOnEdit = (current, next) => statsOnEdit(current, next);

@@ -268,7 +268,10 @@ test('GET /polls/{id} : réponses ordonnées, votes et total', async () => {
   seedPoll({ votes: { a: 3, b: 5 } });
   const res = await get('/polls/poll1');
   assert.equal(res.status, 200);
-  assert.deepEqual(res.json, {
+  const { form, version, ...read } = res.json;
+  assert.deepEqual(form, { question: 'Q ?', answers: [{ id: 'a', text: 'Oui' }, { id: 'b', text: 'Non' }], theme: 'Suisse', brand: 'blick' });
+  assert.equal(version, ''); // horodatage illisible (sentinel du test)
+  assert.deepEqual(read, {
     id: 'poll1',
     embedUrl: `${BASE}poll/?pollDoc=poll1&brand=blick`,
     question: 'Q ?',
