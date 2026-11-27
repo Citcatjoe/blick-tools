@@ -53,6 +53,10 @@ widget prod et widget de test `…/widget-studio-test/…` → 200 `type: rich`,
   `api-blicktools-ecriture` sur ce seul bucket). Appelants : `hub-backend@rms-leserreporter-romandie`
   et `api-smoke-caller@widget-studio-test` (recette). Spec 003 (règles du dashboard, `POST /images`)
   déployée et recettée le 2026-11-27 (révision `blick-tools-api-00006-4zr`, commit `32666a2`).
+  Spec 004 (`GET /widget-types`) : révision `00007-td5`. Spec 005 (teasers, dossiers, NatiNotes,
+  joueur·euse du match, faits marquants, `GET /teams`) déployée le 2026-11-27 (révision
+  `blick-tools-api-00008-vst`, commit `406c802` ; retour arrière : `00007-td5`), contrôlée sans écriture
+  (description à 9 formats, effectifs lus, demandes incomplètes refusées sur le bon champ).
 - Prod (`BLICK_TOOLS_API_URL_PROD` de `hub-backend`) : service Cloud Run `blick-tools-api` sur
   `blick-tools-app-42a99` (`https://blick-tools-api-273916803061.europe-west1.run.app`), déployé le
   2026-11-19 ; calendriers, tinders et quiz (spec 002) déployés le 2026-11-26 (révision

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-27
 
-**Status**: Implemented — non déployé
+**Status**: Implemented — déployé en test (révision `blick-tools-api-00008-vst`, 2026-11-27), prod non déployée
 
 **Input**: César, après la spec 004 : le Hub Rédaction (extension Sidekick) doit pouvoir créer les
 autres formats du Studio, avec des règles communes au dashboard et à l'API, comme le calendrier, le
